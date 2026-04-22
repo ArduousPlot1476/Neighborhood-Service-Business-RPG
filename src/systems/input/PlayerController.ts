@@ -13,6 +13,7 @@ export interface InputKeys {
   interact: Phaser.Input.Keyboard.Key;
   altInteract: Phaser.Input.Keyboard.Key;
   cancel: Phaser.Input.Keyboard.Key;
+  digits: ReadonlyArray<Phaser.Input.Keyboard.Key>;
 }
 
 export class PlayerController {
@@ -36,6 +37,12 @@ export class PlayerController {
       interact: kb.addKey(K.E),
       altInteract: kb.addKey(K.SPACE),
       cancel: kb.addKey(K.ESC),
+      digits: [
+        kb.addKey(K.ONE),
+        kb.addKey(K.TWO),
+        kb.addKey(K.THREE),
+        kb.addKey(K.FOUR),
+      ],
     };
   }
 

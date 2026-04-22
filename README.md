@@ -2,7 +2,7 @@
 
 Vertical slice of a top-down 2D business RPG. A solo-operator exterior-services game: explore neighborhoods, identify prospects, qualify leads, close deals, perform the work, and grow a route while a rival property-management group pressures the same blocks.
 
-**Current milestone: M1 — District exploration foundation.** No qualification, dialogue branching, jobs, Route Book, rival systems, or save/load yet.
+**Current milestone: M2 — Qualification dialogue.** Branching conversations, prospect ledger, and per-NPC qualification state are in place. Closing Encounter, Route Book, jobs, rivals, and save/load are still ahead.
 
 ## Stack
 
@@ -33,63 +33,71 @@ npm run preview    # serves the production build
 npm run typecheck  # tsc --noEmit only
 ```
 
-## Controls (M1)
+## Controls
 
-| Action   | Keys                  |
-| -------- | --------------------- |
-| Move     | `WASD` or Arrow keys  |
-| Interact | `E` or `Space`        |
-| Close    | `Esc` (also `E`/`Space`) |
+| Action                | Keys                  |
+| --------------------- | --------------------- |
+| Move                  | `WASD` or Arrow keys  |
+| Talk / advance        | `E` or `Space`        |
+| Choose dialogue option| `1` – `4`             |
+| Leave conversation    | `Esc`                 |
 
-## What exists in M1
+## What exists in M2
 
-- Phaser + TS + Vite skeleton tuned for pixel-perfect rendering at a 640x360 internal resolution (FIT-scaled)
-- Boot -> Preload (runtime-generated tileset + person sprite) -> District scene flow
-- A walkable starter district ("Sycamore Ridge") with grass, sidewalks, road, houses, fences, trees, driveways, flowers, and a tree border
-- 4-direction keyboard movement with smooth diagonal normalization
-- Arcade Physics collisions against solid tiles (walls, roofs, fences, trees) and against NPCs
-- Camera follow with a world-size bound and round-pixel snapping
-- 4 distinct NPCs with unique tints and placeholder lines
-- Interact prompt that pops over the nearest NPC in range
-- Bottom-screen interaction panel (name + role + placeholder line) that pauses movement until closed
-- District layout and NPC placements live in `src/content/` so content changes do not require touching scene code
+- Everything from M1 (pixel-perfect 640×360 district, movement, collisions, camera, four placed NPCs)
+- Authored branching dialogue per NPC, driven by a `DialogueGraph` (nodes, options, optional effects, conditional branches)
+- In-memory prospect ledger: `unknown`, `qualified`, `deferred`, `disqualified`
+- Per-NPC qualification profile (`serviceNeed`, `budgetSignal`, `objectionStyle`) — read by future systems, surfaced in dialogue tone today
+- Status badge above each NPC reflects their current standing
+- Status toast confirms outcomes when they land
+- Re-talking to an NPC routes through `resumeRules` so they remember (qualified Jerry won't re-pitch you on Saturdays)
+- Authored conversations include at least one path each to qualified, deferred, disqualified, and a dead-end non-prospect
 
-## What's explicitly out of scope for M1
+## What's explicitly out of scope right now
 
-- Branching dialogue, trust meters, and qualification logic
-- Closing Encounter mini-game
-- Route Book, scheduling, or service-job gameplay
-- Rival (IronRoot) presence or events
-- Save/load
+- Closing Encounter mini-game (M3)
+- Route Book / scheduling / job calendar (M4)
+- Service-job gameplay (M5)
+- Rival (IronRoot) presence and pressure (M6)
+- Save/load and session continuity (M7)
 - Audio
 - Gamepad / touch input
 
-See [`docs/milestones.md`](docs/milestones.md) for the full roadmap.
+See [`docs/milestones.md`](docs/milestones.md) for the full roadmap and [`docs/architecture.md`](docs/architecture.md) for how the layers fit together.
 
 ## Repo layout
 
 ```
 src/
-  main.ts                        bootstrap entry
+  main.ts                                  bootstrap entry
   game/
-    Game.ts                      Phaser.Game factory
-    config.ts                    resolution / tile size constants (constants only, no imports)
+    Game.ts                                Phaser.Game factory
+    config.ts                              resolution / tile size constants (constants only, no imports)
   scenes/
-    BootScene.ts                 minimal, hands off to PreloadScene
-    PreloadScene.ts              generates tileset + person textures at runtime
-    DistrictScene.ts             gameplay scene for a single district
+    BootScene.ts                           minimal, hands off to PreloadScene
+    PreloadScene.ts                        generates tileset + person textures at runtime
+    DistrictScene.ts                       gameplay scene; owns GameState + DialogueController
   entities/
-    Player.ts                    player sprite wrapper
-    Npc.ts                       NPC sprite wrapper (data-driven)
+    Player.ts                              player sprite wrapper
+    Npc.ts                                 NPC sprite wrapper + status badge
+  state/
+    GameState.ts                           in-memory store + change events (toJSON-ready)
+    prospects.ts                           ProspectStatus / QualificationProfile types + colours/labels
   systems/
-    input/PlayerController.ts    key binding + velocity update
+    input/PlayerController.ts              key bindings (movement, interact, digits) + velocity update
     interactions/
-      InteractionPrompt.ts       "[E] Talk" bubble over nearest NPC
-      InteractionPanel.ts        bottom-screen dialogue panel stub
+      InteractionPrompt.ts                 floating "[E] Talk" bubble over nearest NPC
+      InteractionPanel.ts                  bottom-screen dialogue widget (text + numbered options)
+      StatusToast.ts                       transient outcome confirmation
+    dialogue/
+      dialogueTypes.ts                     DialogueGraph / Node / Option / Effect / Condition
+      DialogueController.ts                graph walk + effect application + resume rules
   content/
-    districts/starterDistrict.ts district tile data (built programmatically)
-    npcs/starterDistrictNpcs.ts  NPC placements for the starter district
-  types/index.ts                 shared types
+    districts/starterDistrict.ts           district tile data (programmatic)
+    npcs/starterDistrictNpcs.ts            NPC placements
+    prospects/starterDistrictProspects.ts  per-NPC qualification profiles
+    dialogue/starterDistrictDialogue.ts    authored conversations
+  types/index.ts                           shared types
 docs/
   spec.md
   milestones.md

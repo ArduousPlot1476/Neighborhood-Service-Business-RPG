@@ -8,7 +8,7 @@ export const starterDistrictNpcs: ReadonlyArray<NpcData> = [
     tileY: 15,
     tint: 0x6aa8d9,
     role: 'Homeowner',
-    line: "The lawn has been getting ahead of me for weeks. If somebody reliable showed up, I'd say yes on the spot.",
+    dialogueId: 'jerry_porter',
   },
   {
     id: 'linda_ruiz',
@@ -17,7 +17,7 @@ export const starterDistrictNpcs: ReadonlyArray<NpcData> = [
     tileY: 22,
     tint: 0xe66b8a,
     role: 'Retiree',
-    line: "Lovely morning. The flower beds out back could use attention - not that I expect miracles on a first visit.",
+    dialogueId: 'linda_ruiz',
   },
   {
     id: 'marcus_webb',
@@ -26,7 +26,7 @@ export const starterDistrictNpcs: ReadonlyArray<NpcData> = [
     tileY: 14,
     tint: 0xf0c43a,
     role: 'Busy Professional',
-    line: "Quick question - you handle hedges, or just lawns? I do not have time to read a flyer. Give me the short version.",
+    dialogueId: 'marcus_webb',
   },
   {
     id: 'pat_haller',
@@ -35,6 +35,6 @@ export const starterDistrictNpcs: ReadonlyArray<NpcData> = [
     tileY: 22,
     tint: 0x8ab07a,
     role: 'Neighbor',
-    line: "Welcome to Sycamore Ridge. Two blocks of steady work here if you read the street right and do not oversell.",
+    dialogueId: 'pat_haller',
   },
 ] as const;

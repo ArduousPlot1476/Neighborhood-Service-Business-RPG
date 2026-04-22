@@ -15,7 +15,7 @@ export interface NpcData {
   readonly tileY: number;
   readonly tint: number;
   readonly role: string;
-  readonly line: string;
+  readonly dialogueId: string;
 }
 
 export interface DistrictData {
