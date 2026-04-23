@@ -2,7 +2,7 @@
 
 Each milestone is strictly scoped. Do not pull future work forward.
 
-## M1 - District exploration foundation (this milestone)
+## M1 - District exploration foundation
 
 **Status: complete.**
 
@@ -39,24 +39,38 @@ Delivered:
 
 Explicitly *not* in M2: Closing Encounter scene, trust meter, objection stack, Route Book, scheduling, jobs, rivals, save/load.
 
-## M3 - Closing Encounter (next)
+## M3 - Closing Encounter
 
-Goal: first pass at the "boss fight" closing mini-game. Triggered when a `qualified` prospect is engaged.
+**Status: complete.**
+
+Delivered:
+
+- Dedicated `ClosingEncounterScene` launched from `DistrictScene` for any NPC whose prospect status is `qualified` and whose deal status is `none` or `deferred`
+- Six readable encounter meters (Interest, Trust, Budget Flex, Urgency, Margin Pressure, Composure) with per-archetype starting values
+- Five data-authored actions (Ask Need, Present Service, Anchor Price, Offer Reassurance, Close Now) with per-archetype meter modifiers and reaction lines
+- Four customer archetypes derived from the existing `QualificationProfile`; objection lines fire when meters drop below per-archetype thresholds
+- Three encounter outcomes (win / lose / defer) with a result summary panel before returning to district
+- Three separate state domains on `GameState`: `prospects` (qualification, M2), `deals` (closing lifecycle, M3), `accounts` (won-deal records, M3)
+- Won deals open a minimal `AccountRecord` (npc, plan, monthly value, opening notes)
+- Re-entry routing: qualified + (none|deferred) -> encounter; qualified + won -> account info panel; qualified + lost -> closed-door panel; everything else -> existing M2 dialogue
+- Startup content validation: missing dialogue ids, dangling option targets, dangling resume nodes, missing prospect-NPC pairs, and unknown archetypes all throw at boot
+
+Explicitly *not* in M3: Route Book UI, scheduling, service-job loop, day close, rivals, save/load, audio.
+
+## M4 - Route Book + first service-job loop (next)
+
+Goal: surface won accounts in a Route Book UI and play the first service-job loop on a real account.
 
 Planned:
 
-- Dedicated `ClosingEncounterScene` launched from `DistrictScene` for any NPC whose status is `qualified`
-- Trust meter and objection stack driven by the same `QualificationProfile` already on file
-- Result writes back to the prospect ledger (Won -> a new `won` status / Lost -> `disqualified` / Rescheduled -> `deferred`)
-- Scene boundary, not a controller swap — the dialogue system stays intact for future qualifiers
+- Route Book overlay listing accounts with plan, monthly value, and last-serviced state
+- A "Day" abstraction: time advances when the player triggers Start Day / End Day
+- First service-job loop: walk to a booked NPC's yard, perform a minimal job action, completion writes a `JobRecord` and advances time
+- Optional: stub a Day Close summary screen showing accounts touched + revenue earned
 
-## M4 - Route Book and recurring work
+## M5 - Day cycle + service-job depth
 
-Goal: convert won deals into scheduled recurring jobs with a calendar loop.
-
-## M5 - Service-job gameplay
-
-Goal: actually perform the work on-site.
+Goal: deepen the per-day loop with travel, job quality, and customer satisfaction effects on accounts.
 
 ## M6 - IronRoot rival pressure
 

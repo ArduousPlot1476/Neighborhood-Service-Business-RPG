@@ -23,3 +23,11 @@ export const starterDistrictProspects: ReadonlyArray<ProspectSeed> = [
     profile: { serviceNeed: 'none', budgetSignal: 'unknown', objectionStyle: 'friendly' },
   },
 ] as const;
+
+const PROFILE_BY_ID: Readonly<Record<string, QualificationProfile>> = Object.fromEntries(
+  starterDistrictProspects.map((seed) => [seed.npcId, seed.profile]),
+);
+
+export function getProspectProfile(npcId: string): QualificationProfile | undefined {
+  return PROFILE_BY_ID[npcId];
+}

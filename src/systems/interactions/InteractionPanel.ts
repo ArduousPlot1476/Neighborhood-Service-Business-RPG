@@ -132,6 +132,29 @@ export class InteractionPanel {
     this.open = true;
   }
 
+  renderInfo(opts: {
+    name: string;
+    role: string;
+    body: string;
+    statusLabel: string;
+    statusColor: number;
+  }): void {
+    this.nameText.setText(opts.name);
+    this.roleText.setText(opts.role);
+    this.bodyText.setText(opts.body);
+    this.statusBadge.setFillStyle(opts.statusColor, 1);
+    this.statusLabel.setText(opts.statusLabel);
+    for (let i = 0; i < MAX_OPTIONS; i += 1) {
+      const text = this.optionTexts[i]!;
+      text.setText('');
+      text.setVisible(false);
+    }
+    this.optionCount = 0;
+    this.hintText.setText('[E / Esc] close');
+    this.container.setVisible(true);
+    this.open = true;
+  }
+
   hide(): void {
     this.container.setVisible(false);
     this.open = false;

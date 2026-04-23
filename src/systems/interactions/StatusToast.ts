@@ -21,7 +21,7 @@ export class StatusToast {
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
-    const w = 220;
+    const w = 240;
     const h = 22;
     const x = GAME_WIDTH / 2;
     const y = 26;
@@ -48,10 +48,12 @@ export class StatusToast {
 
   show(npcName: string, status: ProspectStatus): void {
     if (status === 'unknown') return;
-    const label = PROSPECT_STATUS_LABEL[status];
-    const color = PROSPECT_STATUS_COLOR[status];
+    this.showRaw(`${npcName} — ${PROSPECT_STATUS_LABEL[status]}`, PROSPECT_STATUS_COLOR[status]);
+  }
+
+  showRaw(message: string, color: number): void {
     this.swatch.setFillStyle(color, 1);
-    this.text.setText(`${npcName} — ${label}`);
+    this.text.setText(message);
 
     this.cancelTimers();
     this.container.setVisible(true);

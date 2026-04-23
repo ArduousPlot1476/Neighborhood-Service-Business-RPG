@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes only what exists today (M2). It updates as the game grows.
+This document describes only what exists today (M3). It updates as the game grows.
 
 ## Boot flow
 
@@ -10,59 +10,102 @@ index.html
 main.ts
   |-- createGame('app')                    // src/game/Game.ts
          |-- new Phaser.Game(config)       // config assembled in Game.ts
-                |-- scenes: [BootScene, PreloadScene, DistrictScene]
+                |-- scenes: [BootScene, PreloadScene, DistrictScene, ClosingEncounterScene]
 
 src/game/config.ts is constants only (GAME_WIDTH, GAME_HEIGHT, TILE_SIZE).
 Scenes are imported in Game.ts, never in config.ts, so that scene files can freely import TILE_SIZE without forming an import cycle.
 ```
 
-`BootScene` is intentionally trivial — it exists as a seam so future "choose save slot" / "splash" work can slot in without restructuring. It immediately hands off to `PreloadScene`.
+`BootScene` is intentionally trivial — a seam for future "choose save slot" / splash work. It immediately hands off to `PreloadScene`.
 
-`PreloadScene` generates all runtime textures (tileset + person sprite) via `Phaser.GameObjects.Graphics.generateTexture`, then starts `DistrictScene`. Nothing is loaded from disk; this keeps the repo self-contained while the game design is still moving.
+`PreloadScene` generates all runtime textures (tileset + person sprite) at runtime. Nothing is loaded from disk; the repo stays self-contained while design is moving.
 
-`DistrictScene` is the single play scene. It owns: tile content, player, NPCs, camera, the interaction prompt and panel, the status toast, the in-memory `GameState`, and the `DialogueController`. The scene state is still a simple `EXPLORING | DIALOGUE` gate.
+`DistrictScene` is the play scene. It owns: tile content, player, NPCs, camera, prompt + dialogue panel + status toast, the in-memory `GameState`, and the `DialogueController`. On boot it runs `validateContent(...)` against authored content and throws if anything is missing or dangling.
+
+`ClosingEncounterScene` is the encounter scene. It is launched in parallel by `DistrictScene` (via `scene.launch` while `DistrictScene` is paused) for any qualified prospect with no won/lost deal yet. When the encounter resolves, it emits `closing:result` and stops itself; `DistrictScene` resumes.
 
 ## Rendering
 
-- Game config uses `pixelArt: true`, `roundPixels: true`, `antialias: false`.
-- Internal resolution `640x360` (16:9) scaled via `Phaser.Scale.FIT`, centered.
-- Tile size `16`. The starter district is `50 x 34` tiles (`800 x 544` world pixels).
+- `pixelArt: true`, `roundPixels: true`, `antialias: false`.
+- Internal resolution `640x360` (16:9), `Phaser.Scale.FIT`, centered.
+- Tile size `16`. Starter district is `50 x 34` tiles (`800 x 544` world pixels).
 
 ## World data
 
-The district is built programmatically in `src/content/districts/starterDistrict.ts`, exporting a `DistrictData` record (id, name, width, height, tiles, spawn).
+Built programmatically in `src/content/districts/starterDistrict.ts`, exporting a `DistrictData` record. NPCs live in `src/content/npcs/starterDistrictNpcs.ts` and carry placement, name, tint, role, and a `dialogueId`. Profiles live alongside in `src/content/prospects/starterDistrictProspects.ts` and are looked up via `getProspectProfile(npcId)`.
 
-NPCs live in `src/content/npcs/starterDistrictNpcs.ts` as a `ReadonlyArray<NpcData>`. Each record carries placement, display name, tint, role, and a `dialogueId` that resolves to a `DialogueGraph` in `src/content/dialogue/`.
+## State domains (M3)
 
-## Entities
+`src/state/GameState.ts` is the single in-memory store. Three explicitly separate domains, each with its own record type, listener event, and serialised shape:
 
-- `Player` wraps a `Phaser.Physics.Arcade.Sprite` at the spawn tile, with a small body offset so the collision footprint sits at the feet.
-- `Npc` wraps the same sprite texture, tinted per-NPC, with an immovable body. It also owns a small status badge above the head that the scene drives off the prospect ledger (`unknown` hides the badge; other states show a coloured pip).
+| Domain         | File                  | Statuses                                            | What writes it                       |
+| -------------- | --------------------- | --------------------------------------------------- | ------------------------------------ |
+| Qualification  | `state/prospects.ts`  | `unknown / qualified / deferred / disqualified`     | Dialogue effects (M2)                |
+| Closing/deal   | `state/deals.ts`      | `none / in_progress / won / lost / deferred`        | `ClosingEncounterScene` result (M3)  |
+| Accounts       | `state/accounts.ts`   | `AccountRecord` per won deal                        | `gameState.openAccount(...)` on win  |
 
-## Prospect / game state (M2)
+Closing outcomes never overwrite prospect status. A `qualified` prospect whose deal is `lost` stays `qualified` — the lost deal is its own piece of state, the door is closed at the deal layer not the qualification layer. The `DistrictScene` re-entry router is the only place that combines them to decide what UI to show.
 
-`src/state/GameState.ts` is a small in-memory store. It maps `npcId -> ProspectRecord { status, lastUpdatedTick, notes }` where `ProspectStatus = 'unknown' | 'disqualified' | 'deferred' | 'qualified'`. It exposes `registerProspect`, `getProspectStatus`, `setProspectStatus`, `listProspects`, an `on(listener)` hook, and `toJSON()` for forward compatibility with M7's save system.
+`GameState` exposes `toJSON()` returning `{ tick, prospects, deals, accounts }` — ready for M7's save/load to `JSON.stringify` the whole store.
 
-`QualificationProfile` lives next to it (`src/state/prospects.ts`) and is seeded from `src/content/prospects/starterDistrictProspects.ts`. Profiles aren't read by gameplay yet — they exist so M3's Closing Encounter can branch on `objectionStyle` and `budgetSignal` without re-authoring anything.
+## Dialogue system (M2 — unchanged)
 
-The store deliberately holds no Phaser references, so it can be unit-tested headlessly and serialised wholesale later.
+Three layers: **content** (`src/content/dialogue/`), **logic** (`src/systems/dialogue/DialogueController.ts`), **view** (`src/systems/interactions/InteractionPanel.ts`). Effects (`setStatus`, `end`) write to `GameState.prospects` only. M3 added a new `renderInfo(...)` method on the panel for short, choice-less post-deal panels (won/lost), reusing the same widget without going through the dialogue runner.
 
-## Dialogue system (M2)
+## Closing system (M3)
 
-Three layers, kept decoupled:
+Four pieces, kept decoupled the same way as the dialogue system:
 
-1. **Content** — `src/content/dialogue/starterDistrictDialogue.ts` exports `DialogueGraph` records (`{ rootId, nodes, resumeRules? }`). A `DialogueOption` carries a label, an optional `next` node id, optional `effects[]`, and an optional `showIf` condition. Dialogue files import only types — never scenes, never Phaser.
-2. **Logic** — `src/systems/dialogue/DialogueController.ts` walks the graph, applies effects to `GameState`, evaluates `resumeRules` against the prospect's current status to pick the entry node on re-visit, and emits a plain `DialogueViewModel` for the UI. It owns no Phaser objects either, so the same controller will drive the Closing Encounter UI in M3.
-3. **View** — `src/systems/interactions/InteractionPanel.ts` is the bottom-of-screen widget. It only renders a `DialogueViewModel` and reports option count back; it does not advance state on its own.
+1. **Types** — `src/systems/closing/closingTypes.ts` exports `EncounterMeter`, `EncounterMeters`, `EncounterAction`, `MeterDelta`, `CustomerArchetype`, `ObjectionSet`, `EncounterInit`, `EncounterViewModel`, `EncounterResult`, `EncounterOutcome`. No Phaser imports.
+2. **Content** —
+   - `src/content/closing/customerArchetypes.ts` — four archetypes (`eager_believer`, `careful_decider`, `pragmatic_holdout`, `skeptical_haggler`) with starting meters, plan, base/floor price, and outcome lines. `deriveArchetypeId(profile)` maps a `QualificationProfile` to an archetype id.
+   - `src/content/closing/closingActions.ts` — five actions (`ask_need`, `present_service`, `anchor_price`, `offer_reassurance`, `close_now`). Each carries a base meter delta, optional per-archetype mods, per-archetype reaction lines, and a composure cost. `close_now` is `terminal`.
+   - `src/content/closing/objectionSets.ts` — per-archetype lines that fire when a meter drops below a threshold. Selected by the controller after each action and appended to the reaction line.
+3. **Logic** — `src/systems/closing/ClosingEncounterController.ts` walks the encounter (no Phaser). Tracks the six meters, applies action deltas + archetype mods, checks objection triggers, advances turn, and resolves the outcome on `close_now`, on composure ≤ 0, or on `walkAway()`.
+4. **View** — `src/scenes/ClosingEncounterScene.ts` hosts the UI: header, six meter bars, reaction line, action list with descriptions, and a result overlay.
 
-`DistrictScene` is the only thing that knows about all three layers. It calls `controller.start(...)` on interact, feeds digit keypresses into `controller.selectOption(i)`, re-renders the panel from each new view-model, and closes everything on the controller's `onEnd` callback.
+Outcome thresholds (live in the controller):
 
-`StatusToast` (sibling of the panel) listens to `GameState` changes via `gameState.on(...)` and surfaces a brief top-of-screen confirmation when an outcome lands.
+- **win** — `trust >= 60 && interest >= 65 && budgetFlex >= 50`
+- **lose** — `trust <= 25 || interest <= 25`
+- **defer** — anything else (also: `walkAway()` always defers)
 
-## Scene state
+Win price is interpolated between archetype `priceFloorCents` and `basePriceCents` based on final budget flex.
 
-`DistrictScene` holds `SceneState = 'EXPLORING' | 'DIALOGUE'`. In `DIALOGUE`, the controller is ticked in locked mode (velocity zero), digit keys drive option selection, `E`/`Space` advance single-option nodes, and `Esc` cancels. The dialogue controller owns the conversation lifecycle; the scene only mediates input.
+## Scene state and handoff
 
-## Where M3 plugs in
+`SceneState = 'EXPLORING' | 'DIALOGUE' | 'INFO_PANEL' | 'ENCOUNTER'`.
 
-The Closing Encounter is intended to be a separate Phaser scene (`ClosingEncounterScene`), launched from `DistrictScene` when the player engages an NPC whose `GameState` status is already `qualified`. It will read the same `QualificationProfile` to shape the trust meter and objection stack, and write back to the same `GameState` on completion. No part of the dialogue graph or `DialogueController` should need to change — the handoff happens at the scene boundary, before the controller is even started.
+The `DistrictScene.engage(npc)` router decides what happens on interact:
+
+```
+prospect == 'qualified' AND deal in {none, deferred} -> launchEncounter   (ENCOUNTER)
+prospect == 'qualified' AND deal == 'won'            -> openWonAccountPanel   (INFO_PANEL)
+prospect == 'qualified' AND deal == 'lost'           -> openLostDealPanel     (INFO_PANEL)
+otherwise                                            -> openDialogue          (DIALOGUE)
+```
+
+Encounter handoff:
+
+1. `setDealStatus(npcId, 'in_progress')` and `recordEncounterAttempt(npcId)` so the deal record exists and the attempt counter advances even if the player walks away.
+2. `scene.get('ClosingEncounterScene').events.once(ENCOUNTER_RESULT_EVENT, handler)` to hear the result exactly once.
+3. `scene.pause()` then `scene.launch('ClosingEncounterScene', { init })` — the district scene freezes in place, the encounter renders over it.
+4. On result: write `dealStatus = won|lost|deferred`, `openAccount(...)` if win, `scene.resume()`, set state back to `EXPLORING`, surface a deal toast.
+
+## Content validation
+
+`src/systems/content/validateContent.ts` runs at the top of `DistrictScene.create()`. It checks:
+
+- duplicate NPC ids
+- every `dialogueId` resolves to a graph
+- every graph's `rootId` is in `nodes`
+- every option's `next` target exists
+- every `resumeRule.nodeId` exists
+- every prospect seed has a matching NPC placement
+- every profile derives a known archetype
+
+A failure throws `ContentValidationError` at boot — bad content fails loudly instead of silently producing dead conversations or null encounters.
+
+## Where M4 plugs in
+
+The Route Book overlay reads `gameState.listAccounts()` directly. The first service-job loop will need a `JobRecord` model in `src/state/jobs.ts` and a tick-advance method on `GameState`; nothing in M3 needs to change to support it. The encounter scene is independent of the day/job model — it cares about a single negotiation, not the calendar.

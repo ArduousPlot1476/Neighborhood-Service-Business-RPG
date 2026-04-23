@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BootScene } from '../scenes/BootScene';
 import { PreloadScene } from '../scenes/PreloadScene';
 import { DistrictScene } from '../scenes/DistrictScene';
+import { ClosingEncounterScene } from '../scenes/ClosingEncounterScene';
 import { GAME_HEIGHT, GAME_WIDTH } from './config';
 
 export function createGame(parentId: string): Phaser.Game {
@@ -24,7 +25,7 @@ export function createGame(parentId: string): Phaser.Game {
         debug: false,
       },
     },
-    scene: [BootScene, PreloadScene, DistrictScene],
+    scene: [BootScene, PreloadScene, DistrictScene, ClosingEncounterScene],
   };
   return new Phaser.Game(config);
 }
