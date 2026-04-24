@@ -11,19 +11,18 @@ Explore neighborhoods, identify prospects, qualify leads, enter dedicated Closin
 3. **Conversation-as-gameplay.** The "boss fight" is closing a deal. Later milestones build up qualification, trust, objections, and the Closing Encounter mini-game.
 4. **Small loop, visible growth.** Small routes, steady recurring jobs, a rival applying pressure to the same blocks you work. Your Route Book is the progression track.
 
-## Near-term scope boundary (through M4)
+## Near-term scope boundary (through M5)
 
-The full prospecting-to-payday arc now plays end-to-end:
+The prospecting-to-payday arc plays end-to-end *and* now has consequences. Service quality drives account health; missed and failed visits drop satisfaction without resetting the recurring cadence; an at-risk account can be contested by IronRoot and lost outright if you ignore it.
 
-1. Walk the district, find an NPC, qualify them through dialogue
-2. Re-engage; enter the Closing Encounter; win an account
-3. Account opens with a first job auto-scheduled for today
-4. Walk back to that NPC; an `!` marker shows their yard is ready
-5. Engage; the dedicated Service Job scene opens; service the four zones under the timer
-6. Result writes payout, quality, and updates the account's lifetime totals
-7. Open the Route Book (`Tab`) to see route growth; `[N]` ends the day; Day Close summarises earnings and previews tomorrow
+1. Walk, qualify, close, sign — an account opens with a first job for today
+2. Walk back; an `!` marks the ready yard; service the four zones under the timer
+3. Quality drives the customer's satisfaction band (healthy / watch / at_risk / threatened)
+4. End the day (`N`); Day Close shows earnings, per-job result, and IronRoot activity; the day advances and overdue work auto-schedules
+5. If an account drifts into watch or worse, IronRoot drops a doorhanger — a `RIVAL` marker pulses above the NPC and you have 3 days to win them back with a `solid` or better service visit
+6. Ignore the doorhanger and the deadline expires — the account churns to IronRoot and disappears from the active route
 
-Customer satisfaction effects, a real per-day energy budget, multi-district travel, rivals, and save/load are all still deferred.
+Save/load is still deferred to M6.
 
 ## Service Job (M4)
 
@@ -35,9 +34,40 @@ A separate scene, opened from the district when a booked NPC has a job ready tod
 
 `N` ends the day. The Day Close screen shows what was earned today, how many jobs were completed/failed/missed, the per-job breakdown, and a one-line teaser for tomorrow. On confirm, the day advances and any account whose plan cadence has come due gets a fresh job scheduled for the new day.
 
+## Account health + cadence (M5)
+
+Every account carries a `satisfaction` score (0-100) and a cadence anchor (`nextDueDay`):
+
+- **Completed** service jobs adjust satisfaction by quality (pristine +12, solid +6, rough -4, unfinished -8) and reset cadence to `scheduledDay + plan.cadenceDays`
+- **Failed** jobs (≤5% quality) drop satisfaction by 12 and set the next due day to *tomorrow* — the property still needs a real service visit
+- **Missed** jobs (day ended without engagement) drop satisfaction by 15 and similarly schedule tomorrow's catch-up
+
+Risk bands derive from satisfaction:
+
+- `healthy` (75+) — green
+- `watch` (50-74) — yellow
+- `at_risk` (25-49) — orange
+- `threatened` (0-24) — red
+
+Bands surface in the Route Book and on the in-world prompt label. Critically, missed and failed work do *not* extend the customer's service interval — they only push the cadence anchor to "tomorrow" so you owe them a catch-up.
+
+## IronRoot disruptions (M5)
+
+The first authored rival event is the **IronRoot Doorhanger**. At day close, any non-churned account in `watch` or worse can be contested. The event:
+
+- applies an immediate satisfaction penalty (-8)
+- sets a 3-day deadline
+- shows a pulsing `RIVAL` marker on the NPC
+- adds a `CONTESTED` tag in the Route Book
+- changes the in-world prompt to `[E] Win them back`
+
+To resolve: complete the contested account's next service job at `solid` or `pristine` quality. Resolution clears the marker and bumps satisfaction by +10. Each day the doorhanger sits unaddressed, satisfaction drifts down by another -4. If the deadline passes unresolved, the account churns: it stays in the Route Book under "Lost to IronRoot" but no further jobs schedule for it.
+
+The disruption system is registry-driven. Future rival events are content-only additions to `disruptionEvents.ts`.
+
 ## State domains
 
-Four separate state stores, one per concern. They are deliberately not collapsed.
+Five separate state stores, one per concern. They are deliberately not collapsed.
 
 **Prospect / qualification (M2)** — was the door worth knocking on?
 - `unknown` — not yet read, or read inconclusively
@@ -61,7 +91,12 @@ Four separate state stores, one per concern. They are deliberately not collapsed
 - `failed` — engaged but did not clear meaningfully (≤5% score)
 - `missed` — day ended without engagement
 
-Closing outcomes never overwrite qualification status, and job outcomes never overwrite closing status. A `qualified` prospect whose deal is `lost` stays `qualified` in the prospect ledger; an account whose job is `missed` stays a `won` deal. This separation matters because M5+ will let satisfaction degrade churn without touching the qualification record.
+**Disruption (M5)** — a rival event targeting one account.
+- `active` — the contest is live; affects satisfaction and is visible everywhere
+- `resolved` — the player completed a high-enough quality service visit before the deadline
+- `expired` — the deadline passed; the account churns
+
+Outcomes never cross domain boundaries. A `qualified` prospect whose deal is `lost` stays `qualified`. An account whose job is `missed` stays a `won` deal. A `churned` account is still a `won` deal — the loss lives at the account/disruption layer, not the qualification layer. This separation lets M6+ persist and replay the world without state ambiguity.
 
 A small coloured pip above an NPC reflects their qualification status once it leaves `unknown`. The interaction prompt label changes after qualification (e.g. "[E] Pitch" while a deal is open, "[E] Booked" after a win).
 

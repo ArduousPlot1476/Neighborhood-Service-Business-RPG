@@ -1,6 +1,12 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../game/config';
-import { ACCOUNT_PLAN_LABEL, formatDollars, formatMonthlyValue } from '../state/accounts';
+import {
+  ACCOUNT_PLAN_LABEL,
+  formatDollars,
+  formatMonthlyValue,
+  riskBandFromSatisfaction,
+  RISK_BAND_LABEL,
+} from '../state/accounts';
 import { JOB_STATUS_LABEL } from '../state/jobs';
 import type { GameState } from '../state/GameState';
 
@@ -12,6 +18,7 @@ export class RouteBookOverlay {
   private readonly footerText: Phaser.GameObjects.Text;
   private readonly emptyText: Phaser.GameObjects.Text;
   private readonly summaryText: Phaser.GameObjects.Text;
+  private readonly disruptionText: Phaser.GameObjects.Text;
   private open = false;
 
   constructor(scene: Phaser.Scene, state: GameState) {
@@ -44,14 +51,22 @@ export class RouteBookOverlay {
       })
       .setOrigin(1, 0);
 
-    this.bodyText = scene.add.text(left, top + 30, '', {
+    this.disruptionText = scene.add.text(left, top + 22, '', {
+      fontFamily: 'monospace',
+      fontSize: '10px',
+      color: '#e08a85',
+      wordWrap: { width: w - 28 },
+    });
+    this.disruptionText.setLineSpacing(2);
+
+    this.bodyText = scene.add.text(left, top + 50, '', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#cfe9c3',
     });
     this.bodyText.setLineSpacing(3);
 
-    this.emptyText = scene.add.text(left, top + 30, '', {
+    this.emptyText = scene.add.text(left, top + 50, '', {
       fontFamily: 'monospace',
       fontSize: '10px',
       color: '#8ab07a',
@@ -69,6 +84,7 @@ export class RouteBookOverlay {
       bg,
       this.headerText,
       this.summaryText,
+      this.disruptionText,
       this.bodyText,
       this.emptyText,
       this.footerText,
@@ -93,16 +109,30 @@ export class RouteBookOverlay {
     const accounts = [...this.state.listAccounts()].sort((a, b) => a.openedTick - b.openedTick);
     const day = this.state.getCurrentDay();
 
-    const totalMonthly = accounts.reduce((s, a) => s + a.monthlyValueCents, 0);
+    const activeAccounts = accounts.filter((a) => !a.churned);
+    const churnedAccounts = accounts.filter((a) => a.churned);
+
+    const totalMonthly = activeAccounts.reduce((s, a) => s + a.monthlyValueCents, 0);
     const totalEarned = accounts.reduce((s, a) => s + a.totalEarnedCents, 0);
     this.summaryText.setText(
       [
         `Day ${day}`,
-        `${accounts.length} account${accounts.length === 1 ? '' : 's'}`,
+        `${activeAccounts.length} account${activeAccounts.length === 1 ? '' : 's'}`,
         `${formatMonthlyValue(totalMonthly)} recurring`,
         `${formatDollars(totalEarned)} earned`,
       ].join('   '),
     );
+
+    const activeDisruptions = this.state.listActiveDisruptions();
+    if (activeDisruptions.length === 0) {
+      this.disruptionText.setText('');
+    } else {
+      const lines = activeDisruptions.map((d) => {
+        const remaining = Math.max(0, d.deadlineDay - day);
+        return `! IronRoot is contesting ${this.npcLabel(d.accountId)} — ${remaining} day${remaining === 1 ? '' : 's'} left to win them back.`;
+      });
+      this.disruptionText.setText(lines.join('\n'));
+    }
 
     if (accounts.length === 0) {
       this.bodyText.setText('');
@@ -116,7 +146,9 @@ export class RouteBookOverlay {
     this.emptyText.setText('');
 
     const lines: string[] = [];
-    accounts.forEach((account, idx) => {
+    let idx = 0;
+    for (const account of activeAccounts) {
+      idx += 1;
       const planLabel = ACCOUNT_PLAN_LABEL[account.plan];
       const monthly = formatMonthlyValue(account.monthlyValueCents);
       const earned = formatDollars(account.totalEarnedCents);
@@ -125,14 +157,34 @@ export class RouteBookOverlay {
         .find((j) => j.scheduledDay === day);
       const statusLabel = todayJob ? JOB_STATUS_LABEL[todayJob.status] : 'No job today';
       const lastServiced = account.lastServicedDay ? `last day ${account.lastServicedDay}` : 'never serviced';
+      const band = riskBandFromSatisfaction(account.satisfaction);
+      const bandLabel = RISK_BAND_LABEL[band];
+      const contested = this.state.getActiveDisruptionForAccount(account.id);
+      const overdue = !todayJob && account.nextDueDay < day;
+      const tags: string[] = [];
+      if (overdue) tags.push('OVERDUE');
+      if (contested) tags.push('CONTESTED');
+      const tagSuffix = tags.length > 0 ? `   [${tags.join(' · ')}]` : '';
 
-      lines.push(`${idx + 1}. ${account.npcName} — ${planLabel}`);
+      lines.push(`${idx}. ${account.npcName} — ${planLabel}${tagSuffix}`);
       lines.push(`   ${monthly}    earned ${earned}    ${lastServiced}    today: ${statusLabel}`);
-    });
+      lines.push(`   health: ${account.satisfaction}/100 (${bandLabel})    next due: day ${account.nextDueDay}`);
+    }
+
+    if (churnedAccounts.length > 0) {
+      lines.push('');
+      lines.push('--- LOST TO IRONROOT ---');
+      for (const account of churnedAccounts) {
+        idx += 1;
+        const planLabel = ACCOUNT_PLAN_LABEL[account.plan];
+        const earned = formatDollars(account.totalEarnedCents);
+        lines.push(`${idx}. ${account.npcName} — ${planLabel} — earned ${earned} (churned day ${account.churnedDay ?? '?'})`);
+      }
+    }
 
     this.bodyText.setText(lines.join('\n'));
 
-    const readyCount = accounts.filter((a) =>
+    const readyCount = activeAccounts.filter((a) =>
       this.state.getJobsForNpc(a.npcId).some(
         (j) => j.scheduledDay === day && j.status === 'scheduled',
       ),
@@ -147,5 +199,10 @@ export class RouteBookOverlay {
 
   get isOpen(): boolean {
     return this.open;
+  }
+
+  private npcLabel(accountId: string): string {
+    const account = this.state.getAccount(accountId);
+    return account?.npcName ?? accountId;
   }
 }

@@ -1,8 +1,22 @@
 import { getServicePlan } from '../content/services/servicePlans';
-import type { AccountRecord } from './accounts';
+import {
+  clampSatisfaction,
+  satisfactionDeltaForCompletedJob,
+  satisfactionDeltaForFailedJob,
+  satisfactionDeltaForMissedJob,
+  type AccountRecord,
+  type AccountRiskBand,
+} from './accounts';
+import { riskBandFromSatisfaction } from './accounts';
 import { createInitialDeal, type DealRecord, type DealStatus } from './deals';
 import {
+  createDisruptionRecord,
+  type DisruptionRecord,
+  type DisruptionStatus,
+} from './disruptions';
+import {
   createScheduledJob,
+  type JobQuality,
   type JobRecord,
   type JobStatus,
 } from './jobs';
@@ -20,9 +34,13 @@ export type GameStateChange =
   | { readonly type: 'prospectStatusChanged'; readonly npcId: string; readonly previous: ProspectStatus; readonly next: ProspectStatus }
   | { readonly type: 'dealStatusChanged'; readonly npcId: string; readonly previous: DealStatus; readonly next: DealStatus }
   | { readonly type: 'accountOpened'; readonly account: AccountRecord }
+  | { readonly type: 'accountSatisfactionChanged'; readonly accountId: string; readonly previous: number; readonly next: number; readonly previousBand: AccountRiskBand; readonly nextBand: AccountRiskBand; readonly note: string | null }
+  | { readonly type: 'accountChurned'; readonly accountId: string }
   | { readonly type: 'jobScheduled'; readonly job: JobRecord }
   | { readonly type: 'jobStatusChanged'; readonly jobId: string; readonly previous: JobStatus; readonly next: JobStatus }
-  | { readonly type: 'dayAdvanced'; readonly previousDay: number; readonly nextDay: number };
+  | { readonly type: 'dayAdvanced'; readonly previousDay: number; readonly nextDay: number }
+  | { readonly type: 'disruptionTriggered'; readonly disruption: DisruptionRecord }
+  | { readonly type: 'disruptionStatusChanged'; readonly disruptionId: string; readonly previous: DisruptionStatus; readonly next: DisruptionStatus };
 
 export interface SerializedGameState {
   readonly tick: number;
@@ -32,6 +50,15 @@ export interface SerializedGameState {
   readonly deals: ReadonlyArray<DealRecord>;
   readonly accounts: ReadonlyArray<AccountRecord>;
   readonly jobs: ReadonlyArray<JobRecord>;
+  readonly disruptions: ReadonlyArray<DisruptionRecord>;
+}
+
+export interface DayCloseSummary {
+  readonly previousDay: number;
+  readonly nextDay: number;
+  readonly missedJobs: ReadonlyArray<JobRecord>;
+  readonly failedJobsCarriedOver: ReadonlyArray<JobRecord>;
+  readonly nextJobs: ReadonlyArray<JobRecord>;
 }
 
 export class GameState {
@@ -39,11 +66,15 @@ export class GameState {
   private currentDay = 1;
   private dayState: DayState = 'in_progress';
   private jobIdCounter = 0;
+  private disruptionIdCounter = 0;
   private readonly prospects = new Map<string, ProspectRecord>();
   private readonly deals = new Map<string, DealRecord>();
   private readonly accounts = new Map<string, AccountRecord>();
   private readonly jobs = new Map<string, JobRecord>();
+  private readonly disruptions = new Map<string, DisruptionRecord>();
   private readonly listeners = new Set<GameStateListener>();
+
+  // ---------- prospects ----------
 
   registerProspect(npcId: string): ProspectRecord {
     const existing = this.prospects.get(npcId);
@@ -78,6 +109,8 @@ export class GameState {
   listProspects(): ReadonlyArray<ProspectRecord> {
     return [...this.prospects.values()];
   }
+
+  // ---------- deals ----------
 
   ensureDeal(npcId: string): DealRecord {
     const existing = this.deals.get(npcId);
@@ -120,6 +153,8 @@ export class GameState {
     return [...this.deals.values()];
   }
 
+  // ---------- accounts ----------
+
   openAccount(account: AccountRecord): AccountRecord {
     if (this.accounts.has(account.id)) {
       return this.accounts.get(account.id)!;
@@ -143,6 +178,39 @@ export class GameState {
   listAccounts(): ReadonlyArray<AccountRecord> {
     return [...this.accounts.values()];
   }
+
+  adjustSatisfaction(accountId: string, delta: number, note: string | null = null): void {
+    const account = this.accounts.get(accountId);
+    if (!account) return;
+    if (delta === 0) return;
+    const previous = account.satisfaction;
+    const next = clampSatisfaction(previous + delta);
+    if (previous === next) return;
+    account.satisfaction = next;
+    const previousBand = riskBandFromSatisfaction(previous);
+    const nextBand = riskBandFromSatisfaction(next);
+    this.advanceTick();
+    this.emit({
+      type: 'accountSatisfactionChanged',
+      accountId,
+      previous,
+      next,
+      previousBand,
+      nextBand,
+      note,
+    });
+  }
+
+  churnAccount(accountId: string, day: number): void {
+    const account = this.accounts.get(accountId);
+    if (!account || account.churned) return;
+    account.churned = true;
+    account.churnedDay = day;
+    this.advanceTick();
+    this.emit({ type: 'accountChurned', accountId });
+  }
+
+  // ---------- jobs ----------
 
   scheduleJob(args: {
     accountId: string;
@@ -190,15 +258,25 @@ export class GameState {
     if (previous !== args.status) {
       this.emit({ type: 'jobStatusChanged', jobId: job.id, previous, next: args.status });
     }
-    if (args.status === 'completed' || args.status === 'failed') {
-      const account = this.accounts.get(job.accountId);
-      if (account) {
-        account.totalEarnedCents += args.payoutCents;
-        account.lastServicedDay = this.currentDay;
-        if (args.status === 'completed') {
-          account.jobsCompleted += 1;
-        }
-      }
+    const account = this.accounts.get(job.accountId);
+    if (!account) return job;
+
+    account.totalEarnedCents += args.payoutCents;
+
+    if (args.status === 'completed') {
+      account.jobsCompleted += 1;
+      account.lastServicedDay = this.currentDay;
+      const plan = getServicePlan(account.plan);
+      account.nextDueDay = job.scheduledDay + plan.cadenceDays;
+      this.adjustSatisfaction(
+        account.id,
+        satisfactionDeltaForCompletedJob(args.qualityLabel),
+        `Job completed (${args.qualityLabel})`,
+      );
+    } else if (args.status === 'failed') {
+      account.jobsFailed += 1;
+      account.nextDueDay = this.currentDay + 1;
+      this.adjustSatisfaction(account.id, satisfactionDeltaForFailedJob(), 'Job failed');
     }
     return job;
   }
@@ -238,6 +316,95 @@ export class GameState {
     return this.listJobs().filter((j) => j.npcId === npcId);
   }
 
+  getLastCompletedJobForAccount(accountId: string): JobRecord | undefined {
+    let best: JobRecord | undefined;
+    for (const job of this.jobs.values()) {
+      if (job.accountId !== accountId) continue;
+      if (job.status !== 'completed') continue;
+      if (!best || job.scheduledDay > best.scheduledDay) best = job;
+    }
+    return best;
+  }
+
+  getLatestQualityForAccount(accountId: string): JobQuality | null {
+    let best: JobRecord | undefined;
+    for (const job of this.jobs.values()) {
+      if (job.accountId !== accountId) continue;
+      if (job.status !== 'completed') continue;
+      if (!best || (job.completedTick ?? 0) > (best.completedTick ?? 0)) best = job;
+    }
+    return best?.quality ?? null;
+  }
+
+  // ---------- disruptions ----------
+
+  addDisruption(args: {
+    eventId: string;
+    accountId: string;
+    npcId: string;
+    triggeredDay: number;
+    deadlineDay: number;
+    narrative: string;
+  }): DisruptionRecord {
+    this.disruptionIdCounter += 1;
+    const record = createDisruptionRecord({
+      id: `disruption_${this.disruptionIdCounter}`,
+      ...args,
+    });
+    this.disruptions.set(record.id, record);
+    this.advanceTick();
+    this.emit({ type: 'disruptionTriggered', disruption: record });
+    return record;
+  }
+
+  markDisruptionResolved(disruptionId: string, day: number): void {
+    const record = this.disruptions.get(disruptionId);
+    if (!record || record.status !== 'active') return;
+    const previous = record.status;
+    record.status = 'resolved';
+    record.resolution = 'won_back';
+    record.resolvedDay = day;
+    this.advanceTick();
+    this.emit({ type: 'disruptionStatusChanged', disruptionId, previous, next: 'resolved' });
+  }
+
+  markDisruptionExpired(disruptionId: string, day: number): void {
+    const record = this.disruptions.get(disruptionId);
+    if (!record || record.status !== 'active') return;
+    const previous = record.status;
+    record.status = 'expired';
+    record.resolution = 'lost_to_rival';
+    record.resolvedDay = day;
+    this.advanceTick();
+    this.emit({ type: 'disruptionStatusChanged', disruptionId, previous, next: 'expired' });
+  }
+
+  getActiveDisruptionForAccount(accountId: string): DisruptionRecord | undefined {
+    for (const record of this.disruptions.values()) {
+      if (record.accountId !== accountId) continue;
+      if (record.status === 'active') return record;
+    }
+    return undefined;
+  }
+
+  getActiveDisruptionForNpc(npcId: string): DisruptionRecord | undefined {
+    for (const record of this.disruptions.values()) {
+      if (record.npcId !== npcId) continue;
+      if (record.status === 'active') return record;
+    }
+    return undefined;
+  }
+
+  listDisruptions(): ReadonlyArray<DisruptionRecord> {
+    return [...this.disruptions.values()];
+  }
+
+  listActiveDisruptions(): ReadonlyArray<DisruptionRecord> {
+    return this.listDisruptions().filter((d) => d.status === 'active');
+  }
+
+  // ---------- day cycle ----------
+
   getCurrentDay(): number {
     return this.currentDay;
   }
@@ -246,14 +413,33 @@ export class GameState {
     return this.dayState;
   }
 
-  closeDay(): { previousDay: number; nextDay: number; missedJobs: ReadonlyArray<JobRecord>; nextJobs: ReadonlyArray<JobRecord> } {
+  closeDay(): DayCloseSummary {
     const previousDay = this.currentDay;
     const missed: JobRecord[] = [];
+    const failedCarriedOver: JobRecord[] = [];
+
     for (const job of this.jobs.values()) {
       if (job.scheduledDay === previousDay && job.status === 'scheduled') {
         job.status = 'missed';
         missed.push(job);
-        this.emit({ type: 'jobStatusChanged', jobId: job.id, previous: 'scheduled', next: 'missed' });
+        this.emit({
+          type: 'jobStatusChanged',
+          jobId: job.id,
+          previous: 'scheduled',
+          next: 'missed',
+        });
+        const account = this.accounts.get(job.accountId);
+        if (account && !account.churned) {
+          account.jobsMissed += 1;
+          account.nextDueDay = previousDay + 1;
+          this.adjustSatisfaction(account.id, satisfactionDeltaForMissedJob(), 'Service missed');
+        }
+      }
+      if (job.scheduledDay === previousDay && job.status === 'failed') {
+        const account = this.accounts.get(job.accountId);
+        if (account && !account.churned) {
+          failedCarriedOver.push(job);
+        }
       }
     }
 
@@ -263,25 +449,23 @@ export class GameState {
 
     const nextJobs: JobRecord[] = [];
     for (const account of this.accounts.values()) {
-      const last = this.lastFinishedJobForAccount(account.id);
-      if (last) {
+      if (account.churned) continue;
+      if (this.hasOpenJobForAccount(account.id)) continue;
+      if (account.nextDueDay <= nextDay) {
         const plan = getServicePlan(account.plan);
-        const due = (last.completedTick !== null ? last : last).scheduledDay + plan.cadenceDays;
-        if (nextDay >= due && !this.hasOpenJobForAccount(account.id)) {
-          const job = this.scheduleJob({
-            accountId: account.id,
-            npcId: account.npcId,
-            servicePlanId: account.plan,
-            scheduledDay: nextDay,
-            zonesTotal: plan.defaultZoneCount,
-          });
-          nextJobs.push(job);
-        }
+        const job = this.scheduleJob({
+          accountId: account.id,
+          npcId: account.npcId,
+          servicePlanId: plan.id,
+          scheduledDay: nextDay,
+          zonesTotal: plan.defaultZoneCount,
+        });
+        nextJobs.push(job);
       }
     }
 
     this.emit({ type: 'dayAdvanced', previousDay, nextDay });
-    return { previousDay, nextDay, missedJobs: missed, nextJobs };
+    return { previousDay, nextDay, missedJobs: missed, failedJobsCarriedOver: failedCarriedOver, nextJobs };
   }
 
   private hasOpenJobForAccount(accountId: string): boolean {
@@ -290,16 +474,6 @@ export class GameState {
       if (job.status === 'scheduled' || job.status === 'in_progress') return true;
     }
     return false;
-  }
-
-  private lastFinishedJobForAccount(accountId: string): JobRecord | undefined {
-    let best: JobRecord | undefined;
-    for (const job of this.jobs.values()) {
-      if (job.accountId !== accountId) continue;
-      if (job.status !== 'completed' && job.status !== 'missed' && job.status !== 'failed') continue;
-      if (!best || job.scheduledDay > best.scheduledDay) best = job;
-    }
-    return best;
   }
 
   currentTick(): number {
@@ -325,6 +499,7 @@ export class GameState {
       deals: this.listDeals().map((d) => ({ ...d })),
       accounts: this.listAccounts().map((a) => ({ ...a })),
       jobs: this.listJobs().map((j) => ({ ...j })),
+      disruptions: this.listDisruptions().map((d) => ({ ...d })),
     };
   }
 

@@ -1,23 +1,33 @@
 import Phaser from 'phaser';
 import { GAME_HEIGHT, GAME_WIDTH } from '../game/config';
-import { formatDollars, formatMonthlyValue, ACCOUNT_PLAN_LABEL } from '../state/accounts';
+import {
+  ACCOUNT_PLAN_LABEL,
+  formatDollars,
+  formatMonthlyValue,
+} from '../state/accounts';
 import {
   JOB_QUALITY_LABEL,
   JOB_STATUS_LABEL,
   type JobRecord,
 } from '../state/jobs';
-import type { GameState } from '../state/GameState';
+import type { GameState, DayCloseSummary } from '../state/GameState';
+import type { DisruptionDayCloseDigest } from '../systems/rival/disruptionTypes';
 
 export const DAY_CLOSE_DONE_EVENT = 'dayclose:done';
 
+export interface DayCloseAdvanceResult {
+  readonly summary: DayCloseSummary;
+  readonly disruptions: DisruptionDayCloseDigest;
+}
+
 export interface DayCloseSceneData {
   readonly state: GameState;
-  readonly onAdvance: () => void;
+  readonly onAdvance: () => DayCloseAdvanceResult;
 }
 
 export class DayCloseScene extends Phaser.Scene {
   private state!: GameState;
-  private onAdvance!: () => void;
+  private onAdvance!: () => DayCloseAdvanceResult;
   private released = false;
 
   private continueKey!: Phaser.Input.Keyboard.Key;
@@ -34,22 +44,27 @@ export class DayCloseScene extends Phaser.Scene {
   }
 
   create(): void {
-    const day = this.state.getCurrentDay();
-    const todayJobs = this.state.getJobsForDay(day);
-    const completed = todayJobs.filter((j) => j.status === 'completed');
-    const failed = todayJobs.filter((j) => j.status === 'failed');
-    const stillScheduled = todayJobs.filter((j) => j.status === 'scheduled');
+    const closingDay = this.state.getCurrentDay();
+    const todayJobs = this.state.getJobsForDay(closingDay).map((j) => ({ ...j }));
     const earnedToday = todayJobs.reduce((s, j) => s + (j.payoutCents ?? 0), 0);
 
+    const advance = this.onAdvance();
+    const { summary, disruptions } = advance;
+
+    const completed = todayJobs.filter((j) => j.status === 'completed');
+    const failed = todayJobs.filter((j) => j.status === 'failed');
+    const missed = summary.missedJobs;
+
     const accounts = this.state.listAccounts();
-    const totalRecurring = accounts.reduce((s, a) => s + a.monthlyValueCents, 0);
+    const activeAccounts = accounts.filter((a) => !a.churned);
+    const totalRecurring = activeAccounts.reduce((s, a) => s + a.monthlyValueCents, 0);
     const totalLifetime = accounts.reduce((s, a) => s + a.totalEarnedCents, 0);
 
     const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7);
     dim.setDepth(0);
 
     const w = GAME_WIDTH - 60;
-    const h = GAME_HEIGHT - 40;
+    const h = GAME_HEIGHT - 28;
     const x = GAME_WIDTH / 2;
     const y = GAME_HEIGHT / 2;
     const border = this.add.rectangle(x, y, w, h, 0xd9c78a, 1);
@@ -59,10 +74,10 @@ export class DayCloseScene extends Phaser.Scene {
     bg.setDepth(1);
 
     const left = x - w / 2 + 18;
-    const top = y - h / 2 + 16;
+    const top = y - h / 2 + 14;
 
     this.add
-      .text(left, top, `Day ${day} — closing out`, {
+      .text(left, top, `Day ${summary.previousDay} — closed`, {
         fontFamily: 'monospace',
         fontSize: '14px',
         color: '#f4e7b4',
@@ -70,7 +85,7 @@ export class DayCloseScene extends Phaser.Scene {
       .setDepth(2);
 
     this.add
-      .text(x + w / 2 - 18, top + 2, this.cohortLine(accounts.length, totalRecurring, totalLifetime), {
+      .text(x + w / 2 - 18, top + 2, this.cohortLine(activeAccounts.length, totalRecurring, totalLifetime), {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#cfe9c3',
@@ -79,55 +94,109 @@ export class DayCloseScene extends Phaser.Scene {
       .setOrigin(1, 0)
       .setDepth(2);
 
-    const summaryY = top + 36;
+    let cursorY = top + 30;
+
     this.add
-      .text(left, summaryY, `Earned today: ${formatDollars(earnedToday)}`, {
+      .text(left, cursorY, `Earned today: ${formatDollars(earnedToday)}`, {
         fontFamily: 'monospace',
         fontSize: '12px',
         color: earnedToday > 0 ? '#9fd96a' : '#cfe9c3',
       })
       .setDepth(2);
+    cursorY += 16;
 
     this.add
-      .text(left, summaryY + 16, this.tallyLine(completed.length, failed.length, stillScheduled.length), {
+      .text(left, cursorY, this.tallyLine(completed.length, failed.length, missed.length), {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#cfe9c3',
       })
       .setDepth(2);
+    cursorY += 18;
 
-    const detailsY = summaryY + 40;
     this.add
-      .text(left, detailsY, "Today's work:", {
+      .text(left, cursorY, "Today's work:", {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#8ab07a',
       })
       .setDepth(2);
+    cursorY += 12;
 
     const detailLines = todayJobs.length === 0
       ? ['  (no jobs were scheduled for today)']
       : todayJobs.map((job) => this.formatJobLine(job));
-    this.add
-      .text(left, detailsY + 14, detailLines.join('\n'), {
+    const jobsText = this.add
+      .text(left, cursorY, detailLines.join('\n'), {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#cfe9c3',
         lineSpacing: 3,
       })
       .setDepth(2);
+    cursorY += jobsText.height + 8;
 
-    const teaser = this.buildTeaser(day, accounts.length, completed.length, stillScheduled.length);
+    if (
+      disruptions.triggered.length > 0 ||
+      disruptions.resolved.length > 0 ||
+      disruptions.expired.length > 0 ||
+      disruptions.drifted.length > 0
+    ) {
+      this.add
+        .text(left, cursorY, 'IronRoot activity:', {
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          color: '#e08a85',
+        })
+        .setDepth(2);
+      cursorY += 12;
+
+      const lines: string[] = [];
+      for (const d of disruptions.triggered) {
+        lines.push(`  ! Doorhanger left at ${this.npcLabelByAccount(d.accountId)}. ${disruptions.triggered.length === 1 ? 'Win them back fast.' : ''}`.trimEnd());
+      }
+      for (const d of disruptions.expired) {
+        lines.push(`  x ${this.npcLabelByAccount(d.accountId)} signed with IronRoot. Account churned.`);
+      }
+      for (const drift of disruptions.drifted) {
+        const npc = this.npcLabelByAccount(drift.disruption.accountId);
+        const days = Math.max(0, drift.disruption.deadlineDay - summary.nextDay);
+        lines.push(`  · ${npc} drifted ${drift.delta} satisfaction (${days} days left)`);
+      }
+      const disruptionText = this.add
+        .text(left, cursorY, lines.join('\n'), {
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          color: '#cfe9c3',
+          lineSpacing: 3,
+        })
+        .setDepth(2);
+      cursorY += disruptionText.height + 8;
+    }
+
+    if (summary.nextJobs.length > 0) {
+      this.add
+        .text(left, cursorY, `Tomorrow on the route: ${summary.nextJobs.length} job${summary.nextJobs.length === 1 ? '' : 's'} scheduled.`, {
+          fontFamily: 'monospace',
+          fontSize: '10px',
+          color: '#f0c878',
+        })
+        .setDepth(2);
+      cursorY += 14;
+    }
+
+    const teaser = this.buildTeaser(summary, disruptions, activeAccounts.length);
     this.add
-      .text(left, y + h / 2 - 44, teaser, {
+      .text(left, y + h / 2 - 38, teaser, {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#f0c878',
+        wordWrap: { width: w - 32 },
       })
       .setDepth(2);
 
     this.add
-      .text(x, y + h / 2 - 22, '[E / Space] start tomorrow', {
+      .text(x, y + h / 2 - 18, '[E / Space] start tomorrow', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#8ab07a',
@@ -149,7 +218,6 @@ export class DayCloseScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.altContinueKey)
     ) {
       this.released = true;
-      this.onAdvance();
       this.events.emit(DAY_CLOSE_DONE_EVENT);
       this.scene.stop();
     }
@@ -157,42 +225,62 @@ export class DayCloseScene extends Phaser.Scene {
 
   private cohortLine(accountCount: number, recurring: number, lifetime: number): string {
     return [
-      `${accountCount} account${accountCount === 1 ? '' : 's'} on the route`,
+      `${accountCount} active account${accountCount === 1 ? '' : 's'}`,
       `${formatMonthlyValue(recurring)} recurring`,
       `${formatDollars(lifetime)} lifetime`,
     ].join('   ');
   }
 
-  private tallyLine(completed: number, failed: number, stillScheduled: number): string {
+  private tallyLine(completed: number, failed: number, missed: number): string {
     const parts: string[] = [];
     parts.push(`Completed: ${completed}`);
     if (failed > 0) parts.push(`Did not finish: ${failed}`);
-    if (stillScheduled > 0) parts.push(`Missed: ${stillScheduled}`);
+    if (missed > 0) parts.push(`Missed: ${missed}`);
     return parts.join('   ');
   }
 
   private formatJobLine(job: JobRecord): string {
-    const npc = this.state.getProspect(job.npcId);
     const account = this.state.getAccount(job.accountId);
-    const name = account?.npcName ?? npc?.npcId ?? job.npcId;
+    const name = account?.npcName ?? job.npcId;
     const planLabel = account ? ACCOUNT_PLAN_LABEL[account.plan] : job.servicePlanId;
     const status = JOB_STATUS_LABEL[job.status];
     const quality = job.quality ? `, ${JOB_QUALITY_LABEL[job.quality]}` : '';
-    const payout = job.payoutCents !== null ? formatDollars(job.payoutCents) : '—';
+    const payout = job.payoutCents !== null && job.payoutCents > 0
+      ? formatDollars(job.payoutCents)
+      : '—';
     return `  • ${name} — ${planLabel}: ${status}${quality}, payout ${payout}`;
   }
 
-  private buildTeaser(currentDay: number, accountCount: number, completedToday: number, missedToday: number): string {
-    const tomorrow = currentDay + 1;
-    if (accountCount === 0) {
+  private npcLabelByAccount(accountId: string): string {
+    const account = this.state.getAccount(accountId);
+    return account?.npcName ?? accountId;
+  }
+
+  private buildTeaser(
+    summary: DayCloseSummary,
+    disruptions: DisruptionDayCloseDigest,
+    activeAccounts: number,
+  ): string {
+    const tomorrow = summary.nextDay;
+    const triggered = disruptions.triggered.length;
+    const expired = disruptions.expired.length;
+    if (expired > 0) {
+      return `Tomorrow: Day ${tomorrow}. You lost ground today — review the route and rebuild.`;
+    }
+    if (triggered > 0) {
+      const account = this.state.getAccount(disruptions.triggered[0]!.accountId);
+      const name = account?.npcName ?? 'the contested account';
+      return `Tomorrow: Day ${tomorrow}. IronRoot is on ${name}. A solid service visit clears them; ignoring the porch will lose the account.`;
+    }
+    if (activeAccounts === 0) {
       return `Tomorrow: Day ${tomorrow}. Keep knocking — the route starts with the first yes.`;
     }
-    if (missedToday > 0) {
-      return `Tomorrow: Day ${tomorrow}. Catch up on what slipped today and keep the streak going.`;
+    if (summary.missedJobs.length > 0) {
+      return `Tomorrow: Day ${tomorrow}. Missed work doesn't disappear — catch-up jobs are scheduled.`;
     }
-    if (completedToday > 0) {
-      return `Tomorrow: Day ${tomorrow}. Route's holding. Next service window opens on cadence.`;
+    if (summary.nextJobs.length > 0) {
+      return `Tomorrow: Day ${tomorrow}. New service windows open. Health holds.`;
     }
-    return `Tomorrow: Day ${tomorrow}. Route's set; jobs schedule themselves as cadences come due.`;
+    return `Tomorrow: Day ${tomorrow}. Route's quiet — pick up another door.`;
   }
 }

@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes only what exists today (M4). It updates as the game grows.
+This document describes only what exists today (M5). It updates as the game grows.
 
 ## Boot flow
 
@@ -29,81 +29,104 @@ Scenes are imported in Game.ts, never in config.ts.
 
 ## Rendering
 
-Same as M3 — pixelArt + roundPixels + antialias-off, 640x360 internal, FIT scale, tile size 16. Service yards render in a smaller virtual area centered in the same canvas; they don't have their own tilemap, just a coloured grass rectangle and zone rectangles drawn directly.
+Same as M3/M4 — pixelArt + roundPixels + antialias-off, 640x360 internal, FIT scale, tile size 16. Service yards render in a smaller virtual area centered in the same canvas; they don't have their own tilemap.
 
-## State domains (M4)
+## State domains (M5)
 
-Four explicitly separate domains on `GameState`. Each has its own record type, listener event, and slice in `toJSON()`:
+Five explicitly separate domains on `GameState`. Each has its own record type, listener events, and slice in `toJSON()`:
 
-| Domain         | File                  | Statuses                                                    | What writes it                       |
-| -------------- | --------------------- | ----------------------------------------------------------- | ------------------------------------ |
-| Qualification  | `state/prospects.ts`  | `unknown / qualified / deferred / disqualified`             | Dialogue effects                     |
-| Closing/deal   | `state/deals.ts`      | `none / in_progress / won / lost / deferred`                | `ClosingEncounterScene` result       |
-| Accounts       | `state/accounts.ts`   | (presence = open) + `lastServicedDay`, `totalEarnedCents`, `jobsCompleted` | `gameState.openAccount(...)` on win, mutated on job completion |
-| Jobs           | `state/jobs.ts`       | `scheduled / in_progress / completed / missed / failed`     | `ServiceJobScene` result, `closeDay()` |
+| Domain         | File                       | Statuses                                                    | What writes it                                |
+| -------------- | -------------------------- | ----------------------------------------------------------- | --------------------------------------------- |
+| Qualification  | `state/prospects.ts`       | `unknown / qualified / deferred / disqualified`             | Dialogue effects                              |
+| Closing/deal   | `state/deals.ts`           | `none / in_progress / won / lost / deferred`                | `ClosingEncounterScene` result                |
+| Accounts       | `state/accounts.ts`        | (presence) + `satisfaction`, `nextDueDay`, `churned`, totals | Encounter result; mutated by job completion + disruption controller |
+| Jobs           | `state/jobs.ts`            | `scheduled / in_progress / completed / missed / failed`     | `ServiceJobScene` result, `closeDay()`        |
+| Disruptions    | `state/disruptions.ts`     | `active / resolved / expired`                               | `DisruptionController`                        |
 
-Closing outcomes never overwrite prospect status. Job outcomes never overwrite deal status. The only place all four are combined is `DistrictScene.engage(npc)`, which reads prospect, deal, and (if won) the day's job to decide what UI to open.
+State boundaries:
 
-`GameState` also owns the day model: `currentDay: number` (starts at 1), `dayState: 'in_progress' | 'closed'`, and `closeDay()` which marks today's still-`scheduled` jobs as `missed`, advances the day, and rolls new scheduled jobs for any account whose plan cadence has come due.
+- Closing outcomes never overwrite prospect status.
+- Job outcomes never overwrite deal status.
+- Disruption status never overwrites job status; it sits *next to* the affected account and uses job-completion quality as a resolution signal, not as a state mutation.
+- The only thing on `AccountRecord` that any system writes is satisfaction (via `adjustSatisfaction`) and the cadence anchor (`nextDueDay`, written by `finishJob` and `closeDay` only). Churn is written via the dedicated `churnAccount(...)` method by `DisruptionController` on expiration.
 
-`toJSON()` returns `{ tick, currentDay, dayState, prospects, deals, accounts, jobs }` — all four domains plus the day clock, ready for M7's save/load.
+`GameState.toJSON()` returns `{ tick, currentDay, dayState, prospects, deals, accounts, jobs, disruptions }` — all five domains plus the day clock, ready for M6's save/load.
 
-## Dialogue + closing systems (M2-M3 — unchanged)
+## Cadence rules (M5)
 
-Both still follow the **content / logic / view** split documented in earlier milestones. M4 added no new dialogue or closing types. The closing scene remains the only thing that writes `deals`; it does not know about `jobs` or `accounts` directly. The encounter result handler in `DistrictScene` is the bridge that turns a `win` into both an account *and* a first scheduled job.
+The cadence anchor lives on `AccountRecord.nextDueDay` (a day-index integer). The rules:
 
-## Service-job system (M4)
+- **Account opens.** `nextDueDay = currentDay`. The first job is scheduled by the encounter result handler for the current day.
+- **Job completed on day D.** `nextDueDay = job.scheduledDay + plan.cadenceDays`. Cadence resets cleanly from the work that actually happened. Account `lastServicedDay = currentDay`, `jobsCompleted += 1`, satisfaction adjusts by quality delta.
+- **Job failed on day D.** `nextDueDay = currentDay + 1`. The property is owed a real visit; cadence does *not* extend. `jobsFailed += 1`, satisfaction drops, `lastServicedDay` is *not* updated (a failed visit isn't a real service event).
+- **Job missed at day close.** `nextDueDay = previousDay + 1`. Same catch-up semantics. `jobsMissed += 1`, satisfaction drops.
+- **`closeDay()` scheduling.** For each non-churned account whose `nextDueDay <= newDay` and which has no open job, a fresh job is scheduled for `newDay`. This is the only place new jobs spawn from cadence.
+
+The bug being closed: previously `closeDay()` walked the *latest finished* job (any status) and set the next attempt to `lastFinishedJob.scheduledDay + cadenceDays`. A missed job at day 15 with biweekly cadence pushed the next attempt to day 29 — punishing the customer for the player's miss. M5 separates the cadence anchor from the job log so missed/failed work never hides behind cadence.
+
+## Account health (M5)
+
+`AccountRecord.satisfaction` is a 0-100 integer with `ACCOUNT_INITIAL_SATISFACTION = 70`. All adjustments go through `gameState.adjustSatisfaction(accountId, delta, note?)`, which clamps, fires `accountSatisfactionChanged`, and includes both old/new band labels for UI animation hooks.
+
+Deltas live in `state/accounts.ts` as named constants:
+
+- Completed: `pristine +12 / solid +6 / rough -4 / unfinished -8`
+- Missed (no-show): `-15`
+- Failed (≤5% quality): `-12`
+- Disruption resolved: `+10`
+- Disruption daily drift while contested: `-4` (each day the doorhanger sits unaddressed)
+
+`riskBandFromSatisfaction(value)` buckets into `healthy (75+) / watch (50-74) / at_risk (25-49) / threatened (0-24)`. Bands surface in the Route Book and gate the disruption-trigger predicate.
+
+## Disruption / rival system (M5)
 
 Same content / logic / view split:
 
-1. **Types** — `src/systems/service/serviceJobTypes.ts` exports `ServiceJobInit`, `ServiceJobViewModel`, `ServiceJobResult`, `ZoneRuntime`, `ServiceJobOutcome`. No Phaser imports.
-2. **Content** —
-   - `src/content/services/servicePlans.ts` — registry of `AccountPlan -> ServicePlan { cadenceDays, basePayoutCents, defaultZoneCount, serviceLabel }`.
-   - `src/content/jobs/starterJobs.ts` — per-NPC `YardLayout` ({ widthTiles, heightTiles, playerSpawn, timerSeconds, zones[] }). Zones carry `kind`, position, size, `secondsToService`, and a label.
-3. **Logic** — `src/systems/service/ServiceJobController.ts` walks the encounter (no Phaser). Each `tick(dt, activeZoneId, isServicing)` advances the timer, accumulates progress on the active zone if servicing, recomputes the projected score (sum of clamped per-zone ratios / total zones), and resolves on timer-zero or all-zones-done. `walkAway()` style finish via `forceFinish()` exists for `Esc`.
-4. **View** — `src/scenes/ServiceJobScene.ts` renders the HUD (timer bar, zones cleared, projected payout) and the yard (grass + coloured zone rectangles + per-zone progress bars). The player sprite is a non-physics `GameObject.Sprite` with manually clamped movement; the scene does not need a tilemap or arcade collisions for a 4-zone slice.
+1. **Types** — `src/systems/rival/disruptionTypes.ts` exports `DisruptionEventDefinition`, `DisruptionTriggerContext`, `DisruptionResolutionContext`, `DisruptionDayCloseDigest`. No Phaser imports.
+2. **Content** — `src/content/events/disruptionEvents.ts` exports a registry of authored events. Each event has an id, name, headline, narrative builder (a function of the affected account), `deadlineDays`, an `initialSatisfactionPenalty` magnitude, a `canTrigger(ctx)` predicate, a `resolveOnJobQuality` whitelist (the qualities that clear the contest via service), and resolution / expiration lines. M5 ships one event: `ironroot_doorhanger`. Adding more events is content-only — the controller doesn't need changes.
+3. **State** — `src/state/disruptions.ts` exports `DisruptionRecord` plus colour/label tables. Records live on `GameState` in their own Map keyed by id; `addDisruption(...)` / `markDisruptionResolved(...)` / `markDisruptionExpired(...)` are the only writers.
+4. **Logic** — `src/systems/rival/DisruptionController.ts` (no Phaser deps) has two entry points:
+   - `evaluateOnDayClose({ closingDay, nextDay })` — first expires any active disruptions whose deadline has passed (and churns the account), applies daily satisfaction drift to active disruptions that haven't expired, then walks accounts and triggers the first matching authored event for each unaffected account that meets a `canTrigger` predicate. Returns a digest the day-close UI uses.
+   - `evaluateOnJobCompletion(job)` — checks the active disruption (if any) for the job's account; if the job's quality is in the event's `resolveOnJobQuality`, marks the disruption resolved and bumps satisfaction.
+5. **View** — `RouteBookOverlay` shows active-disruption banner lines, per-row `CONTESTED` / `OVERDUE` tags, and a dedicated "LOST TO IRONROOT" section for churned accounts. `Npc` renders a pulsing `RIVAL` text marker above the head while contested. `DayCloseScene` shows triggered / expired / drifted activity below today's job summary; the teaser line points the player at what to fix tomorrow.
 
-Outcome: `completed` if all zones cleared OR timer expired with score above the failure floor (5%); `failed` otherwise. `qualityFromScore(score)` buckets the float into `unfinished | rough | solid | pristine`. Payout is `round(basePayoutCents * score)`.
+## Day close handoff (updated in M5)
 
-When the scene resolves the player presses `E` to dismiss; the scene emits `service:result` and stops itself; `DistrictScene` receives the payload, calls `gameState.finishJob(...)` (which also updates the account's `totalEarnedCents`, `lastServicedDay`, and `jobsCompleted`), resumes, and surfaces a toast.
+`DistrictScene.openDayClose()` launches `DayCloseScene` with an `onAdvance` callback that returns a `DayCloseAdvanceResult` (`{ summary, disruptions }`). The scene calls `onAdvance()` *immediately on create*, so the panel renders the *post-close* world: today's settled jobs, IronRoot activity that just happened (triggers and expirations), and the schedule for tomorrow. `[E]` then dismisses and returns the player to `EXPLORING`.
 
-## Route Book + day cycle (M4)
-
-`RouteBookOverlay` is an in-scene UI widget, not a Phaser scene. It reads from `GameState` directly on each `show()`/`refresh()` — no caching. Per-account row shows: customer name, plan label, monthly value, total earned, last serviced day, and today's job status. Header carries day number, account count, total recurring, lifetime earned. Footer shows a contextual hint (jobs still scheduled today, etc.).
-
-`Tab` toggles the overlay; `Esc` also closes it. While `ROUTE_BOOK` state is active, movement is locked. `N` ends the day from any non-modal state — from exploration directly, or from inside the route book.
-
-`DayCloseScene` is a real Phaser scene (paused-launch pattern same as the encounter). It reads `state.getJobsForDay(currentDay)` to build the per-job summary, then on `[E]` calls the `onAdvance` callback (which calls `state.closeDay()`) and stops. `closeDay()` marks unattended scheduled jobs as `missed`, advances the day counter, and schedules next jobs for any account whose plan cadence has come due since their last finished job.
+The reason for this ordering: the disruption controller needs to run before the player sees the summary, otherwise IronRoot activity wouldn't be visible until the next day. The scene captures the "today's jobs" snapshot *before* calling onAdvance so the per-job line items reflect today's outcomes (which are then settled by `closeDay()` mid-frame).
 
 ## Scene state and handoff
 
 `SceneState = 'EXPLORING' | 'DIALOGUE' | 'INFO_PANEL' | 'ENCOUNTER' | 'ROUTE_BOOK' | 'SERVICE_JOB' | 'DAY_CLOSE'`.
 
-`DistrictScene.engage(npc)` router (now four-way):
+`DistrictScene.engage(npc)` router (now five-way):
 
 ```
-prospect == 'qualified' AND deal == 'won' AND today's job is scheduled  -> launchServiceJob
-prospect == 'qualified' AND deal == 'won' AND no active job today       -> openWonAccountPanel
-prospect == 'qualified' AND deal in {none, deferred}                    -> launchEncounter
-prospect == 'qualified' AND deal == 'lost'                              -> openLostDealPanel
-otherwise                                                               -> openDialogue
+prospect=qualified, deal=won, account.churned                   -> openChurnedPanel        (INFO_PANEL)
+prospect=qualified, deal=won, today's job is scheduled          -> launchServiceJob        (SERVICE_JOB)
+prospect=qualified, deal=won, no active job today               -> openWonAccountPanel     (INFO_PANEL)
+prospect=qualified, deal in {none, deferred}                    -> launchEncounter         (ENCOUNTER)
+prospect=qualified, deal=lost                                   -> openLostDealPanel       (INFO_PANEL)
+otherwise                                                       -> openDialogue            (DIALOGUE)
 ```
 
-Service-job handoff mirrors the encounter handoff: `startJob(jobId)` flips it to `in_progress`, register a one-shot listener, `scene.pause()` + `scene.launch('ServiceJobScene', ...)`. On result, `finishJob(...)` writes status/quality/payout and updates the account's totals; `scene.resume()`; toast.
-
-Day-close handoff: `scene.pause()` + `scene.launch('DayCloseScene', { state, onAdvance })`; on done event, resume.
+The contested NPC marker doesn't change the route; an active disruption changes the prompt label ("[E] Win them back") and the urgency, but the gameplay path is still "service their yard."
 
 ## Content validation
 
-`validateContent(...)` (now M4) checks all of:
+`validateContent(...)` (now M5) checks all of:
 
 - duplicate NPC ids, missing dialogue ids, dangling option/resume targets (M2/M3)
 - prospect seeds with no NPC placement, profiles deriving unknown archetypes (M3)
 - service plans with non-positive cadence/payout/zones (M4)
 - yard layouts missing their NPC, duplicate yards, empty zone lists, non-positive `secondsToService` (M4)
+- disruption events with duplicate ids, non-positive `deadlineDays`, empty `resolveOnJobQuality` (which would make the event unresolvable), or negative `initialSatisfactionPenalty` (the magnitude is expected non-negative; the penalty is applied via `-magnitude`) (M5)
 
 Failure throws `ContentValidationError` at the top of `DistrictScene.create()`.
 
-## Where M5 plugs in
+## Where M6 plugs in
 
-Account satisfaction will live as a per-account derived field (`totalCompleted` and `totalMissedOrFailed` are already on the record). M5 will add a sliding-window satisfaction calc and route it back into recurring value. The encounter system stays unchanged. The job system gets one optional new outcome (`'rushed'`?) but the existing scoring math already supports any quality fraction, so it's a content/balance change rather than a structural one. A second district means parameterising the world bound and tile data; no scene-flow change is needed.
+Save/load drops naturally on top of `toJSON()` (already serialises all five domains plus day clock + tick) plus the corresponding constructors that take a serialised shape. The disruption controller's only ephemeral state is the random pick order for `pickFirstEligibleAccount`, which is deterministic enough for M5 — M6 may want to record the chosen account on the disruption record (already stored as `accountId`) so loads are exact.
+
+A second disruption event would slot directly into `disruptionEvents.ts`. The controller already iterates `listDisruptionEvents()` and asks each to `canTrigger(ctx)`, picking the first match per account.

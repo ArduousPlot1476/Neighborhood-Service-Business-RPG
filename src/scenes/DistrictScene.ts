@@ -21,13 +21,18 @@ import { GameState } from '../state/GameState';
 import { PROSPECT_STATUS_LABEL } from '../state/prospects';
 import { DEAL_STATUS_COLOR, DEAL_STATUS_LABEL } from '../state/deals';
 import {
+  ACCOUNT_INITIAL_SATISFACTION,
   ACCOUNT_PLAN_LABEL,
+  RISK_BAND_LABEL,
   formatDollars,
   formatMonthlyValue,
+  riskBandFromSatisfaction,
   type AccountRecord,
 } from '../state/accounts';
 import { JOB_STATUS_COLOR, JOB_STATUS_LABEL } from '../state/jobs';
+import { DISRUPTION_STATUS_COLOR } from '../state/disruptions';
 import { RouteBookOverlay } from '../ui/RouteBookOverlay';
+import { DisruptionController } from '../systems/rival/DisruptionController';
 import { validateContent } from '../systems/content/validateContent';
 import {
   ENCOUNTER_RESULT_EVENT,
@@ -39,7 +44,7 @@ import {
   type ServiceJobCompletionPayload,
   type ServiceJobSceneData,
 } from './ServiceJobScene';
-import { DAY_CLOSE_DONE_EVENT, type DayCloseSceneData } from './DayCloseScene';
+import { DAY_CLOSE_DONE_EVENT, type DayCloseAdvanceResult, type DayCloseSceneData } from './DayCloseScene';
 import { SOLID_TILE_INDICES, TILESET_KEY } from './PreloadScene';
 import type { SceneState } from '../types';
 
@@ -58,6 +63,7 @@ export class DistrictScene extends Phaser.Scene {
   private routeBook!: RouteBookOverlay;
   private gameState!: GameState;
   private dialogue!: DialogueController;
+  private disruptions!: DisruptionController;
   private state: SceneState = 'EXPLORING';
   private dayBannerText!: Phaser.GameObjects.Text;
 
@@ -104,6 +110,7 @@ export class DistrictScene extends Phaser.Scene {
     for (const seed of starterDistrictProspects) {
       this.gameState.registerProspect(seed.npcId);
     }
+    this.disruptions = new DisruptionController(this.gameState);
 
     for (const data of starterDistrictNpcs) {
       const npc = new Npc(this, data);
@@ -149,7 +156,30 @@ export class DistrictScene extends Phaser.Scene {
         }
         case 'dayAdvanced': {
           this.refreshJobMarkers();
+          this.refreshContestedMarkers();
           this.refreshDayBanner();
+          return;
+        }
+        case 'disruptionTriggered': {
+          this.refreshContestedMarkers();
+          const account = this.gameState.getAccount(change.disruption.accountId);
+          this.toast.showRaw(
+            `IronRoot is contesting ${account?.npcName ?? change.disruption.npcId}`,
+            DISRUPTION_STATUS_COLOR.active,
+          );
+          return;
+        }
+        case 'disruptionStatusChanged': {
+          this.refreshContestedMarkers();
+          return;
+        }
+        case 'accountChurned': {
+          this.refreshJobMarkers();
+          this.refreshContestedMarkers();
+          const account = this.gameState.getAccount(change.accountId);
+          if (account) {
+            this.toast.showRaw(`${account.npcName} churned to IronRoot`, 0x9a9a9a);
+          }
           return;
         }
         default:
@@ -188,6 +218,7 @@ export class DistrictScene extends Phaser.Scene {
 
     this.refreshDayBanner();
     this.refreshJobMarkers();
+    this.refreshContestedMarkers();
   }
 
   override update(): void {
@@ -283,6 +314,11 @@ export class DistrictScene extends Phaser.Scene {
     const dealStatus = this.gameState.getDealStatus(npc.data.id);
 
     if (prospectStatus === 'qualified' && dealStatus === 'won') {
+      const account = this.gameState.getAccountByNpc(npc.data.id);
+      if (account?.churned) {
+        this.openChurnedPanel(npc, account);
+        return;
+      }
       const job = this.gameState.getActiveJobForNpc(npc.data.id, this.gameState.getCurrentDay());
       if (job) {
         this.launchServiceJob(npc, job.id);
@@ -374,6 +410,7 @@ export class DistrictScene extends Phaser.Scene {
     this.gameState.setDealStatus(npcId, nextDealStatus, result.summaryLine);
 
     if (result.outcome === 'win' && npc) {
+      const today = this.gameState.getCurrentDay();
       const account: AccountRecord = {
         id: npcId,
         npcId,
@@ -385,6 +422,12 @@ export class DistrictScene extends Phaser.Scene {
         lastServicedDay: null,
         totalEarnedCents: 0,
         jobsCompleted: 0,
+        jobsMissed: 0,
+        jobsFailed: 0,
+        satisfaction: ACCOUNT_INITIAL_SATISFACTION,
+        nextDueDay: today,
+        churned: false,
+        churnedDay: null,
       };
       this.gameState.openAccount(account);
       this.scheduleFirstJob(account);
@@ -440,7 +483,7 @@ export class DistrictScene extends Phaser.Scene {
 
   private handleServiceJobResult(payload: ServiceJobCompletionPayload): void {
     const { jobId, result } = payload;
-    this.gameState.finishJob({
+    const job = this.gameState.finishJob({
       jobId,
       status: result.outcome,
       qualityScore: result.qualityScore,
@@ -449,17 +492,31 @@ export class DistrictScene extends Phaser.Scene {
       qualityLabel: result.qualityLabel,
     });
 
+    let resolvedDisruptionMessage: string | null = null;
+    if (job.status === 'completed') {
+      const resolved = this.disruptions.evaluateOnJobCompletion(job);
+      if (resolved) {
+        const account = this.gameState.getAccount(resolved.accountId);
+        resolvedDisruptionMessage = `${account?.npcName ?? resolved.npcId} kept you — IronRoot rebuffed`;
+      }
+    }
+
     this.scene.resume();
     this.state = 'EXPLORING';
 
-    const npcName = this.gameState.getJob(jobId)?.npcId ?? jobId;
-    const account = this.npcsById.get(npcName)?.data.name ?? npcName;
-    const tone = result.outcome === 'completed' ? '#6ec27a' : '#c25450';
+    const account = this.gameState.getAccount(job.accountId);
+    const accountName = account?.npcName ?? job.npcId;
+    const tone = result.outcome === 'completed' ? 0x6ec27a : 0xc25450;
     const message =
       result.outcome === 'completed'
-        ? `${account} — Job done (${formatDollars(result.payoutCents)})`
-        : `${account} — Job did not finish`;
-    this.toast.showRaw(message, this.hexFromColor(tone));
+        ? `${accountName} — Job done (${formatDollars(result.payoutCents)})`
+        : `${accountName} — Job did not finish`;
+    this.toast.showRaw(message, tone);
+    if (resolvedDisruptionMessage) {
+      this.time.delayedCall(900, () => {
+        this.toast.showRaw(resolvedDisruptionMessage!, 0x6ec27a);
+      });
+    }
   }
 
   private openRouteBook(): void {
@@ -481,12 +538,19 @@ export class DistrictScene extends Phaser.Scene {
 
     const data: DayCloseSceneData = {
       state: this.gameState,
-      onAdvance: () => {
-        this.gameState.closeDay();
-      },
+      onAdvance: () => this.advanceDay(),
     };
     this.scene.pause();
     this.scene.launch('DayCloseScene', data);
+  }
+
+  private advanceDay(): DayCloseAdvanceResult {
+    const summary = this.gameState.closeDay();
+    const disruptions = this.disruptions.evaluateOnDayClose({
+      closingDay: summary.previousDay,
+      nextDay: summary.nextDay,
+    });
+    return { summary, disruptions };
   }
 
   private openWonAccountPanel(npc: Npc): void {
@@ -501,7 +565,10 @@ export class DistrictScene extends Phaser.Scene {
       const value = formatMonthlyValue(account.monthlyValueCents);
       const earned = formatDollars(account.totalEarnedCents);
       const todayLine = lastJob ? JOB_STATUS_LABEL[lastJob.status] : 'No service today';
-      body = `${planLabel} at ${value}. Earned ${earned} so far. Today: ${todayLine}.`;
+      const band = riskBandFromSatisfaction(account.satisfaction);
+      const bandLabel = RISK_BAND_LABEL[band];
+      const dueLine = `Next due day ${account.nextDueDay}`;
+      body = `${planLabel} at ${value}. Earned ${earned}. Health: ${account.satisfaction}/100 (${bandLabel}). ${dueLine}. Today: ${todayLine}.`;
     } else {
       body = "We're booked. Just keep showing up.";
     }
@@ -513,6 +580,19 @@ export class DistrictScene extends Phaser.Scene {
       body,
       statusLabel: DEAL_STATUS_LABEL.won,
       statusColor: lastJob ? JOB_STATUS_COLOR[lastJob.status] : DEAL_STATUS_COLOR.won,
+    });
+  }
+
+  private openChurnedPanel(npc: Npc, account: AccountRecord): void {
+    const earned = formatDollars(account.totalEarnedCents);
+    this.state = 'INFO_PANEL';
+    this.prompt.hide();
+    this.panel.renderInfo({
+      name: npc.data.name,
+      role: npc.data.role,
+      body: `${npc.data.name} signed with IronRoot. You earned ${earned} on this account before they switched.`,
+      statusLabel: 'Lost to IronRoot',
+      statusColor: 0x9a9a9a,
     });
   }
 
@@ -549,6 +629,9 @@ export class DistrictScene extends Phaser.Scene {
     const prospect = this.gameState.getProspectStatus(npc.data.id);
     const deal = this.gameState.getDealStatus(npc.data.id);
     if (prospect === 'qualified' && deal === 'won') {
+      const account = this.gameState.getAccountByNpc(npc.data.id);
+      if (account?.churned) return '[E] Churned';
+      if (npc.isContested) return '[E] Win them back';
       return npc.hasJobReady ? '[E] Service yard' : '[E] Booked';
     }
     if (prospect === 'qualified' && (deal === 'none' || deal === 'deferred')) {
@@ -563,15 +646,23 @@ export class DistrictScene extends Phaser.Scene {
     return DEAL_STATUS_COLOR[status];
   }
 
-  private hexFromColor(hex: string): number {
-    return parseInt(hex.replace('#', ''), 16);
-  }
-
   private refreshJobMarkers(): void {
     const day = this.gameState.getCurrentDay();
     for (const npc of this.npcs) {
+      const account = this.gameState.getAccountByNpc(npc.data.id);
+      if (account?.churned) {
+        npc.setJobReady(false);
+        continue;
+      }
       const job = this.gameState.getActiveJobForNpc(npc.data.id, day);
       npc.setJobReady(!!job && job.status === 'scheduled');
+    }
+  }
+
+  private refreshContestedMarkers(): void {
+    for (const npc of this.npcs) {
+      const disruption = this.gameState.getActiveDisruptionForNpc(npc.data.id);
+      npc.setContested(!!disruption);
     }
   }
 

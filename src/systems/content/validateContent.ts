@@ -2,6 +2,7 @@ import type { ProspectSeed } from '../../content/prospects/starterDistrictProspe
 import { deriveArchetypeId, getArchetype } from '../../content/closing/customerArchetypes';
 import { listServicePlans, getServicePlan } from '../../content/services/servicePlans';
 import { listYardLayouts } from '../../content/jobs/starterJobs';
+import { listDisruptionEvents } from '../../content/events/disruptionEvents';
 import type { DialogueGraph } from '../dialogue/dialogueTypes';
 import type { NpcData } from '../../types';
 import type { AccountPlan } from '../../state/accounts';
@@ -107,6 +108,23 @@ export function validateContent(input: ContentValidationInput): void {
       if (zone.secondsToService <= 0) {
         errors.push(`Yard layout "${layout.npcId}" zone "${zone.id}" has non-positive secondsToService.`);
       }
+    }
+  }
+
+  const eventIds = new Set<string>();
+  for (const event of listDisruptionEvents()) {
+    if (eventIds.has(event.id)) {
+      errors.push(`Duplicate disruption event id "${event.id}".`);
+    }
+    eventIds.add(event.id);
+    if (event.deadlineDays <= 0) {
+      errors.push(`Disruption event "${event.id}" has non-positive deadlineDays.`);
+    }
+    if (event.initialSatisfactionPenalty < 0) {
+      errors.push(`Disruption event "${event.id}" has negative initialSatisfactionPenalty (use a non-negative magnitude).`);
+    }
+    if (event.resolveOnJobQuality.length === 0) {
+      errors.push(`Disruption event "${event.id}" has no resolveOnJobQuality entries — it can never resolve via service.`);
     }
   }
 

@@ -9,9 +9,12 @@ export class Npc {
   readonly data: NpcData;
   private readonly badge: Phaser.GameObjects.Rectangle;
   private readonly jobMarker: Phaser.GameObjects.Text;
+  private readonly contestedMarker: Phaser.GameObjects.Text;
   private status: ProspectStatus = 'unknown';
   private jobReady = false;
+  private contested = false;
   private markerTween: Phaser.Tweens.Tween | null = null;
+  private contestedTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, data: NpcData) {
     this.data = data;
@@ -45,10 +48,30 @@ export class Npc {
       .setDepth(12);
     this.jobMarker.setVisible(false);
 
+    this.contestedMarker = scene.add
+      .text(worldX, worldY - 26, 'RIVAL', {
+        fontFamily: 'monospace',
+        fontSize: '8px',
+        color: '#e08a85',
+        stroke: '#0f1a14',
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(13);
+    this.contestedMarker.setVisible(false);
+
     this.markerTween = scene.tweens.add({
       targets: this.jobMarker,
       y: this.jobMarker.y - 2,
       duration: 600,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1,
+    });
+    this.contestedTween = scene.tweens.add({
+      targets: this.contestedMarker,
+      alpha: 0.55,
+      duration: 700,
       ease: 'Sine.easeInOut',
       yoyo: true,
       repeat: -1,
@@ -71,6 +94,12 @@ export class Npc {
     this.jobMarker.setVisible(ready);
   }
 
+  setContested(contested: boolean): void {
+    if (this.contested === contested) return;
+    this.contested = contested;
+    this.contestedMarker.setVisible(contested);
+  }
+
   get currentStatus(): ProspectStatus {
     return this.status;
   }
@@ -79,11 +108,20 @@ export class Npc {
     return this.jobReady;
   }
 
+  get isContested(): boolean {
+    return this.contested;
+  }
+
   destroy(): void {
     if (this.markerTween) {
       this.markerTween.stop();
       this.markerTween = null;
     }
+    if (this.contestedTween) {
+      this.contestedTween.stop();
+      this.contestedTween = null;
+    }
+    this.contestedMarker.destroy();
     this.jobMarker.destroy();
     this.badge.destroy();
     this.sprite.destroy();

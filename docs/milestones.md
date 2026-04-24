@@ -74,20 +74,35 @@ Delivered:
 
 Explicitly *not* in M4: rivals, save/load, customer-satisfaction effects from missed/failed jobs, multi-day route planning, audio.
 
-## M5 - Day cycle + service-job depth (next)
+## M5 - Account health, cadence consequences, first IronRoot disruption
 
-Goal: deepen the per-day loop. Job quality starts to feed back into account satisfaction; missed jobs dent recurring value; travel time and a per-day energy/composure budget create choices about which jobs to chase.
+**Status: complete.**
+
+Delivered:
+
+- `AccountRecord` extended with `satisfaction` (0-100), `nextDueDay`, `jobsMissed`, `jobsFailed`, `churned`, `churnedDay`
+- Risk bands derived from satisfaction: `healthy / watch / at_risk / threatened` with labels and colours
+- Helper functions in `state/accounts.ts` for completion / missed / failed / contest-resolved / contest-drift satisfaction deltas, plus `clampSatisfaction` and `riskBandFromSatisfaction`
+- **Cadence fix**: only `completed` jobs reset the recurring cadence (`nextDueDay = scheduledDay + cadenceDays`). `missed` and `failed` jobs set `nextDueDay = currentDay + 1` so the property is owed an immediate catch-up — no more "miss a visit, get 14 days off the clock"
+- New `disruptions` state domain (`DisruptionRecord` with status, deadline, narrative) — fifth top-level domain on `GameState`
+- Authored disruption event: **IronRoot Doorhanger** — triggers at day close on any non-churned account in the `watch / at_risk / threatened` band, applies an immediate satisfaction penalty, and gives the player 3 days to win the customer back
+- Resolution: completing a service job at `solid` or `pristine` quality clears the disruption and bumps satisfaction. Each unaddressed day drifts satisfaction down further. If the deadline passes unresolved, the account churns
+- `DisruptionController` (no Phaser) coordinates triggers at day close and resolution at job completion; reusable via `DisruptionEventDefinition` registry — adding more events is content-only
+- Route Book now shows per-account satisfaction, risk band, next-due day, and `OVERDUE` / `CONTESTED` tags, plus a separate "LOST TO IRONROOT" section for churned accounts
+- NPCs with active disruptions show a pulsing `RIVAL` marker above the head; engagement prompt becomes "[E] Win them back"
+- Day Close presents the full digest: today's earnings, per-job result, IronRoot triggered/expired/drifted activity, tomorrow's scheduled load, and a contextual teaser line
+- Content validator extended to cover disruption events (duplicate ids, non-positive deadlines, empty resolve-quality lists)
+
+Explicitly *not* in M5: rival ambient AI / multiple disruption types, save/load, audio.
+
+## M6 - Save/load + final hardening (next)
+
+Goal: lock the slice down — persist all five state domains across reloads, harden edge cases, and tighten the play loop with the content authored.
 
 Planned:
 
-- Account satisfaction tracked over recent service quality
-- Missed/failed jobs cost recurring value over time
-- A simple per-day energy/composure budget — service jobs cost it, encounters cost it, optional rest restores it
-- Day Close summary calls out satisfaction shifts and warns about upcoming churn
-- Possibly: a second district to give travel meaningful trade-offs
-
-## M6 - IronRoot rival pressure
-
-Goal: a visible antagonist who contests blocks you work.
-
-## M7 - Save/load and session continuity
+- Save/load (`localStorage`) covering prospects, deals, accounts, jobs, disruptions, and the day clock — `toJSON()` is already in place
+- Manual save slot + auto-save on day close
+- A small audio pass: light SFX cues for milestone moments (encounter open, job done, day close, disruption trigger)
+- Edge-case sweeps: scene-resume on save load, disruption deadlines that span loads, churned accounts on load
+- Optional: a second authored disruption event to prove the registry generalises

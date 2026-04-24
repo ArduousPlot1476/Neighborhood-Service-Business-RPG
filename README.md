@@ -2,7 +2,7 @@
 
 Vertical slice of a top-down 2D business RPG. A solo-operator exterior-services game: explore neighborhoods, identify prospects, qualify leads, close deals, perform the work, and grow a route while a rival property-management group pressures the same blocks.
 
-**Current milestone: M4 — Route Book + first service-job loop.** Won accounts now produce scheduled jobs you actually do, on a real timer, in a dedicated scene. The Route Book shows the route as it grows; Day Close summarises earnings and rolls the calendar forward. Customer satisfaction effects, rivals, and save/load are still ahead.
+**Current milestone: M5 — Account health, cadence consequences, first IronRoot disruption.** Service quality and missed work now materially matter. IronRoot can contest at-risk accounts; ignoring the contest churns the customer. Save/load is the remaining milestone before the slice locks down.
 
 ## Stack
 
@@ -46,27 +46,25 @@ npm run typecheck  # tsc --noEmit only
 | End day (Day Close)          | `N`                   |
 | Leave dialogue / walk away   | `Esc`                 |
 
-## What exists in M4
+## What exists in M5
 
-- Everything from M1–M3 (district + dialogue + qualification ledger + Closing Encounter + accounts)
-- New `jobs` state domain on `GameState` with `JobRecord { status, quality, payout, scheduledDay, ... }`
-- Lightweight day model: `currentDay` (starts at 1), `closeDay()` advances day and rolls cadence-due jobs
-- Route Book overlay (Tab): per-account plan, monthly value, lifetime earned, last serviced day, today's job status; route-wide summary
-- Won deals auto-schedule a first service job for the current day; an `!` marker bobs above NPCs whose yard is ready
-- Dedicated `ServiceJobScene`: 4-zone yard, hold-`E` to service, projected payout updates live, result panel scores quality (unfinished / rough / solid / pristine) and pays accordingly
-- `DayCloseScene`: earnings today, completed/missed/failed counts, per-job breakdown, lifetime totals, teaser line for tomorrow
-- District banner shows current day; engagement router now distinguishes "qualified-with-job-ready" from "qualified-no-job-today"
-- Content validator extended to cover service plans (cadence/payout/zones) and yard layouts (per-NPC, non-empty zones, positive durations)
+- Everything from M1–M4 (district + dialogue + qualification + Closing Encounter + accounts + jobs + Route Book + Day Close)
+- **Account health.** `satisfaction` (0-100) per account, with named delta constants for completed (per quality), missed, failed, contest-resolved, and contest-drift. Risk bands `healthy / watch / at_risk / threatened` derive from satisfaction.
+- **Cadence fix.** Only `completed` jobs reset the recurring service interval. `missed` and `failed` jobs push the catch-up to *tomorrow* — no more skipping a visit and getting two weeks back on the clock.
+- **Fifth state domain.** `disruptions` (`active / resolved / expired`) lives next to prospects/deals/accounts/jobs on `GameState`. Total of five domains, all serialised independently in `toJSON()`.
+- **First IronRoot disruption: the doorhanger.** Triggers at day close on any non-churned account in `watch` or worse, applies a satisfaction penalty, and gives 3 days to resolve. Resolution: complete the contested account's next job at `solid` or `pristine` quality.
+- **Churn.** Disruptions that hit their deadline expire, and the affected account churns: still listed in the Route Book under "Lost to IronRoot" but no further jobs schedule.
+- **`DisruptionController`.** Pure (no Phaser) coordinator with `evaluateOnDayClose(...)` and `evaluateOnJobCompletion(...)`. Events are authored via a `DisruptionEventDefinition` registry — adding new disruption types is content-only.
+- **UI surfaces.** Route Book shows per-account health, risk band, next-due day, `OVERDUE` / `CONTESTED` tags, and a separate "LOST TO IRONROOT" section. NPCs show a pulsing `RIVAL` marker while contested. Day Close presents a full digest of today's earnings, per-job results, IronRoot triggered/expired/drifted activity, and a contextual teaser.
+- **Validator extended** to cover disruption events.
 
 ## What's explicitly out of scope right now
 
-- Customer satisfaction / churn from missed/failed jobs (M5)
-- Per-day energy/composure budget (M5)
-- Multi-district travel (M5)
-- Rival (IronRoot) presence and pressure (M6)
-- Save/load and session continuity (M7)
+- Save/load (`localStorage`) — M6
+- Multiple disruption types or rival ambient AI — M6 stretch
 - Audio
 - Gamepad / touch input
+- Multi-district travel
 
 See [`docs/milestones.md`](docs/milestones.md) for the full roadmap and [`docs/architecture.md`](docs/architecture.md) for how the layers fit together.
 
@@ -81,19 +79,20 @@ src/
   scenes/
     BootScene.ts                           hands off to PreloadScene
     PreloadScene.ts                        generates tileset + person textures at runtime
-    DistrictScene.ts                       hub: GameState owner, dialogue, route book, scene handoff
+    DistrictScene.ts                       hub: GameState owner, controllers, scene handoff
     ClosingEncounterScene.ts               negotiation scene
     ServiceJobScene.ts                     yard service mini-loop
-    DayCloseScene.ts                       end-of-day summary
+    DayCloseScene.ts                       end-of-day summary (closes day on enter, then renders digest)
   entities/
     Player.ts                              player sprite wrapper
-    Npc.ts                                 NPC sprite + status badge + job-ready marker
+    Npc.ts                                 NPC sprite + status badge + job-ready marker + RIVAL marker
   state/
-    GameState.ts                           in-memory store: prospects + deals + accounts + jobs + day
+    GameState.ts                           in-memory store: prospects + deals + accounts + jobs + disruptions + day
     prospects.ts                           ProspectStatus / QualificationProfile
     deals.ts                               DealStatus / DealRecord
-    accounts.ts                            AccountRecord / AccountPlan / formatters
+    accounts.ts                            AccountRecord (satisfaction, nextDueDay, churned) + helpers
     jobs.ts                                JobRecord / JobStatus / JobQuality
+    disruptions.ts                         DisruptionRecord / DisruptionStatus
   systems/
     input/PlayerController.ts              key bindings + velocity update
     interactions/
@@ -101,30 +100,34 @@ src/
       InteractionPanel.ts                  bottom-screen dialogue widget + post-deal info
       StatusToast.ts                       transient outcome confirmation
     dialogue/
-      dialogueTypes.ts                     DialogueGraph / Node / Option / Effect / Condition
+      dialogueTypes.ts
       DialogueController.ts                graph walk + effect application + resume rules
     closing/
-      closingTypes.ts                      EncounterMeter / Action / Archetype / ViewModel / Result
+      closingTypes.ts
       ClosingEncounterController.ts        meter update + outcome resolution
     service/
-      serviceJobTypes.ts                   ServiceJobInit / ViewModel / Result
+      serviceJobTypes.ts
       ServiceJobController.ts              zone progress + timer + scoring
+    rival/
+      disruptionTypes.ts                   DisruptionEventDefinition + ctxs + day-close digest
+      DisruptionController.ts              event triggers + resolution + churn
     content/
       validateContent.ts                   startup validator
   ui/
-    RouteBookOverlay.ts                    in-scene overlay over DistrictScene
+    RouteBookOverlay.ts                    in-scene overlay (health, risk band, contested/overdue tags, churned section)
   content/
-    districts/starterDistrict.ts           district tile data
-    npcs/starterDistrictNpcs.ts            NPC placements
-    prospects/starterDistrictProspects.ts  per-NPC qualification profiles + lookup
-    dialogue/starterDistrictDialogue.ts    authored conversations
+    districts/starterDistrict.ts
+    npcs/starterDistrictNpcs.ts
+    prospects/starterDistrictProspects.ts
+    dialogue/starterDistrictDialogue.ts
     closing/
-      customerArchetypes.ts                archetypes + profile->archetype derivation
-      closingActions.ts                    action registry
-      objectionSets.ts                     archetype-keyed objection triggers
-    services/servicePlans.ts               plan registry (cadence, payout, zone count)
-    jobs/starterJobs.ts                    per-NPC yard layouts (zones + timer)
-  types/index.ts                           shared types (NpcData, SceneState, etc.)
+      customerArchetypes.ts
+      closingActions.ts
+      objectionSets.ts
+    services/servicePlans.ts
+    jobs/starterJobs.ts                    per-NPC yard layouts
+    events/disruptionEvents.ts             authored disruption registry (M5)
+  types/index.ts
 docs/
   spec.md
   milestones.md
