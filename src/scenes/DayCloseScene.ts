@@ -45,15 +45,18 @@ export class DayCloseScene extends Phaser.Scene {
 
   create(): void {
     const closingDay = this.state.getCurrentDay();
-    const todayJobs = this.state.getJobsForDay(closingDay).map((j) => ({ ...j }));
-    const earnedToday = todayJobs.reduce((s, j) => s + (j.payoutCents ?? 0), 0);
 
     const advance = this.onAdvance();
     const { summary, disruptions } = advance;
 
+    // Snapshot today's jobs AFTER advance so their statuses reflect the close:
+    // scheduled → missed conversions, completed/failed jobs retain their prior status.
+    const todayJobs = this.state.getJobsForDay(closingDay).map((j) => ({ ...j }));
+    const earnedToday = todayJobs.reduce((s, j) => s + (j.payoutCents ?? 0), 0);
+
     const completed = todayJobs.filter((j) => j.status === 'completed');
     const failed = todayJobs.filter((j) => j.status === 'failed');
-    const missed = summary.missedJobs;
+    const missed = todayJobs.filter((j) => j.status === 'missed');
 
     const accounts = this.state.listAccounts();
     const activeAccounts = accounts.filter((a) => !a.churned);
