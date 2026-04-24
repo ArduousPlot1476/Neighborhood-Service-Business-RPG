@@ -2,7 +2,7 @@
 
 Vertical slice of a top-down 2D business RPG. A solo-operator exterior-services game: explore neighborhoods, identify prospects, qualify leads, close deals, perform the work, and grow a route while a rival property-management group pressures the same blocks.
 
-**Current milestone: M3 — Closing Encounter.** Qualified leads now transition into a dedicated negotiation scene that resolves into a win, loss, or defer; wins open a minimal account record. Route Book UI, the first service-job loop, rivals, and save/load are still ahead.
+**Current milestone: M4 — Route Book + first service-job loop.** Won accounts now produce scheduled jobs you actually do, on a real timer, in a dedicated scene. The Route Book shows the route as it grows; Day Close summarises earnings and rolls the calendar forward. Customer satisfaction effects, rivals, and save/load are still ahead.
 
 ## Stack
 
@@ -41,26 +41,28 @@ npm run typecheck  # tsc --noEmit only
 | Talk / advance               | `E` or `Space`        |
 | Choose dialogue option       | `1` – `4`             |
 | Choose encounter action      | `1` – `5`             |
+| Hold to service a yard zone  | `E` (in a coloured zone) |
+| Route Book overlay           | `Tab`                 |
+| End day (Day Close)          | `N`                   |
 | Leave dialogue / walk away   | `Esc`                 |
 
-## What exists in M3
+## What exists in M4
 
-- Everything from M1 + M2 (district, movement, NPCs, branching dialogue, prospect ledger, status badges and toasts)
-- Dedicated `ClosingEncounterScene` launched as a parallel scene over a paused `DistrictScene`
-- Six readable encounter meters: Interest, Trust, Budget Flex, Urgency, Margin Pressure, Composure
-- Five data-authored negotiation actions: Ask Need, Present Service, Anchor Price, Offer Reassurance, Close Now
-- Four customer archetypes derived from each NPC's `QualificationProfile` — different starting meters, different reactions to the same actions
-- Per-archetype objection lines fire when meters fall below thresholds and append to the customer's reaction
-- Three encounter outcomes — win, lose, defer — with a result summary panel
-- Wins open an `AccountRecord` with plan and monthly value; the price interpolates between archetype price floor and ceiling based on final Budget Flex
-- Three separate state domains on `GameState`: prospects (M2), deals (M3), accounts (M3) — closing outcomes never overwrite qualification status
-- Re-entry routing: qualified+open deal → encounter; qualified+won → account info; qualified+lost → closed-door panel; everything else → existing M2 dialogue
-- Startup content validation: missing dialogue ids, dangling option targets, dangling resume nodes, missing prospects, and unknown archetypes throw at boot
+- Everything from M1–M3 (district + dialogue + qualification ledger + Closing Encounter + accounts)
+- New `jobs` state domain on `GameState` with `JobRecord { status, quality, payout, scheduledDay, ... }`
+- Lightweight day model: `currentDay` (starts at 1), `closeDay()` advances day and rolls cadence-due jobs
+- Route Book overlay (Tab): per-account plan, monthly value, lifetime earned, last serviced day, today's job status; route-wide summary
+- Won deals auto-schedule a first service job for the current day; an `!` marker bobs above NPCs whose yard is ready
+- Dedicated `ServiceJobScene`: 4-zone yard, hold-`E` to service, projected payout updates live, result panel scores quality (unfinished / rough / solid / pristine) and pays accordingly
+- `DayCloseScene`: earnings today, completed/missed/failed counts, per-job breakdown, lifetime totals, teaser line for tomorrow
+- District banner shows current day; engagement router now distinguishes "qualified-with-job-ready" from "qualified-no-job-today"
+- Content validator extended to cover service plans (cadence/payout/zones) and yard layouts (per-NPC, non-empty zones, positive durations)
 
 ## What's explicitly out of scope right now
 
-- Route Book / scheduling / job calendar (M4)
-- Service-job gameplay (M5)
+- Customer satisfaction / churn from missed/failed jobs (M5)
+- Per-day energy/composure budget (M5)
+- Multi-district travel (M5)
 - Rival (IronRoot) presence and pressure (M6)
 - Save/load and session continuity (M7)
 - Audio
@@ -75,34 +77,42 @@ src/
   main.ts                                  bootstrap entry
   game/
     Game.ts                                Phaser.Game factory (registers all scenes)
-    config.ts                              resolution / tile size constants (constants only, no imports)
+    config.ts                              resolution / tile size constants (constants only)
   scenes/
     BootScene.ts                           hands off to PreloadScene
     PreloadScene.ts                        generates tileset + person textures at runtime
-    DistrictScene.ts                       gameplay scene; owns GameState + DialogueController + handoff to encounter
-    ClosingEncounterScene.ts               negotiation scene; renders meters, actions, result summary
+    DistrictScene.ts                       hub: GameState owner, dialogue, route book, scene handoff
+    ClosingEncounterScene.ts               negotiation scene
+    ServiceJobScene.ts                     yard service mini-loop
+    DayCloseScene.ts                       end-of-day summary
   entities/
     Player.ts                              player sprite wrapper
-    Npc.ts                                 NPC sprite wrapper + status badge
+    Npc.ts                                 NPC sprite + status badge + job-ready marker
   state/
-    GameState.ts                           in-memory store for prospects + deals + accounts (toJSON-ready)
+    GameState.ts                           in-memory store: prospects + deals + accounts + jobs + day
     prospects.ts                           ProspectStatus / QualificationProfile
     deals.ts                               DealStatus / DealRecord
-    accounts.ts                            AccountRecord / AccountPlan
+    accounts.ts                            AccountRecord / AccountPlan / formatters
+    jobs.ts                                JobRecord / JobStatus / JobQuality
   systems/
     input/PlayerController.ts              key bindings + velocity update
     interactions/
       InteractionPrompt.ts                 floating "[E] ..." bubble over nearest NPC
-      InteractionPanel.ts                  bottom-screen dialogue widget + post-deal info renderer
+      InteractionPanel.ts                  bottom-screen dialogue widget + post-deal info
       StatusToast.ts                       transient outcome confirmation
     dialogue/
       dialogueTypes.ts                     DialogueGraph / Node / Option / Effect / Condition
       DialogueController.ts                graph walk + effect application + resume rules
     closing/
       closingTypes.ts                      EncounterMeter / Action / Archetype / ViewModel / Result
-      ClosingEncounterController.ts        meter update + outcome resolution (no Phaser deps)
+      ClosingEncounterController.ts        meter update + outcome resolution
+    service/
+      serviceJobTypes.ts                   ServiceJobInit / ViewModel / Result
+      ServiceJobController.ts              zone progress + timer + scoring
     content/
-      validateContent.ts                   startup validator; throws on missing/dangling references
+      validateContent.ts                   startup validator
+  ui/
+    RouteBookOverlay.ts                    in-scene overlay over DistrictScene
   content/
     districts/starterDistrict.ts           district tile data
     npcs/starterDistrictNpcs.ts            NPC placements
@@ -110,8 +120,10 @@ src/
     dialogue/starterDistrictDialogue.ts    authored conversations
     closing/
       customerArchetypes.ts                archetypes + profile->archetype derivation
-      closingActions.ts                    action registry (deltas, mods, reactions)
+      closingActions.ts                    action registry
       objectionSets.ts                     archetype-keyed objection triggers
+    services/servicePlans.ts               plan registry (cadence, payout, zone count)
+    jobs/starterJobs.ts                    per-NPC yard layouts (zones + timer)
   types/index.ts                           shared types (NpcData, SceneState, etc.)
 docs/
   spec.md

@@ -15,16 +15,31 @@ import {
   starterDistrictProspects,
 } from '../content/prospects/starterDistrictProspects';
 import { deriveArchetypeId, getArchetype } from '../content/closing/customerArchetypes';
+import { getServicePlan } from '../content/services/servicePlans';
+import { getYardLayout } from '../content/jobs/starterJobs';
 import { GameState } from '../state/GameState';
 import { PROSPECT_STATUS_LABEL } from '../state/prospects';
 import { DEAL_STATUS_COLOR, DEAL_STATUS_LABEL } from '../state/deals';
-import { ACCOUNT_PLAN_LABEL, formatMonthlyValue, type AccountRecord } from '../state/accounts';
+import {
+  ACCOUNT_PLAN_LABEL,
+  formatDollars,
+  formatMonthlyValue,
+  type AccountRecord,
+} from '../state/accounts';
+import { JOB_STATUS_COLOR, JOB_STATUS_LABEL } from '../state/jobs';
+import { RouteBookOverlay } from '../ui/RouteBookOverlay';
 import { validateContent } from '../systems/content/validateContent';
 import {
   ENCOUNTER_RESULT_EVENT,
   type EncounterCompletionPayload,
   type EncounterSceneData,
 } from './ClosingEncounterScene';
+import {
+  SERVICE_JOB_RESULT_EVENT,
+  type ServiceJobCompletionPayload,
+  type ServiceJobSceneData,
+} from './ServiceJobScene';
+import { DAY_CLOSE_DONE_EVENT, type DayCloseSceneData } from './DayCloseScene';
 import { SOLID_TILE_INDICES, TILESET_KEY } from './PreloadScene';
 import type { SceneState } from '../types';
 
@@ -40,9 +55,11 @@ export class DistrictScene extends Phaser.Scene {
   private prompt!: InteractionPrompt;
   private panel!: InteractionPanel;
   private toast!: StatusToast;
+  private routeBook!: RouteBookOverlay;
   private gameState!: GameState;
   private dialogue!: DialogueController;
   private state: SceneState = 'EXPLORING';
+  private dayBannerText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: 'DistrictScene' });
@@ -108,6 +125,7 @@ export class DistrictScene extends Phaser.Scene {
     this.prompt = new InteractionPrompt(this);
     this.panel = new InteractionPanel(this);
     this.toast = new StatusToast(this);
+    this.routeBook = new RouteBookOverlay(this, this.gameState);
 
     this.dialogue = new DialogueController(this.gameState);
     this.dialogue.onEnd(() => {
@@ -116,16 +134,31 @@ export class DistrictScene extends Phaser.Scene {
     });
 
     this.gameState.on((change) => {
-      if (change.type === 'prospectStatusChanged') {
-        const npc = this.npcsById.get(change.npcId);
-        if (!npc) return;
-        npc.setStatus(change.next);
-        this.toast.show(npc.data.name, change.next);
+      switch (change.type) {
+        case 'prospectStatusChanged': {
+          const npc = this.npcsById.get(change.npcId);
+          if (!npc) return;
+          npc.setStatus(change.next);
+          this.toast.show(npc.data.name, change.next);
+          return;
+        }
+        case 'jobScheduled':
+        case 'jobStatusChanged': {
+          this.refreshJobMarkers();
+          return;
+        }
+        case 'dayAdvanced': {
+          this.refreshJobMarkers();
+          this.refreshDayBanner();
+          return;
+        }
+        default:
+          return;
       }
     });
 
-    this.add
-      .text(4, 4, district.name, {
+    this.dayBannerText = this.add
+      .text(4, 4, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
         color: '#d9c78a',
@@ -134,7 +167,7 @@ export class DistrictScene extends Phaser.Scene {
       .setDepth(80);
 
     this.add
-      .text(4, 16, 'Move WASD/Arrows  |  Talk E/Space  |  Choose 1-4  |  Leave Esc', {
+      .text(4, 16, 'Move WASD/Arrows  |  Talk E  |  Choose 1-4  |  Leave Esc', {
         fontFamily: 'monospace',
         fontSize: '9px',
         color: '#8ab07a',
@@ -142,6 +175,19 @@ export class DistrictScene extends Phaser.Scene {
       .setScrollFactor(0)
       .setDepth(80)
       .setAlpha(0.8);
+
+    this.add
+      .text(4, 28, '[Tab] Route Book  |  [N] End Day', {
+        fontFamily: 'monospace',
+        fontSize: '9px',
+        color: '#8ab07a',
+      })
+      .setScrollFactor(0)
+      .setDepth(80)
+      .setAlpha(0.8);
+
+    this.refreshDayBanner();
+    this.refreshJobMarkers();
   }
 
   override update(): void {
@@ -149,9 +195,25 @@ export class DistrictScene extends Phaser.Scene {
       Phaser.Input.Keyboard.JustDown(this.keys.interact) ||
       Phaser.Input.Keyboard.JustDown(this.keys.altInteract);
     const cancelJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.cancel);
+    const tabJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.routeBook);
+    const endDayJustPressed = Phaser.Input.Keyboard.JustDown(this.keys.endDay);
 
-    if (this.state === 'ENCOUNTER') {
+    if (this.state === 'ENCOUNTER' || this.state === 'SERVICE_JOB' || this.state === 'DAY_CLOSE') {
       this.controller.update(this.player.sprite, this.keys, true);
+      return;
+    }
+
+    if (this.state === 'ROUTE_BOOK') {
+      this.controller.update(this.player.sprite, this.keys, true);
+      if (tabJustPressed || cancelJustPressed) {
+        this.routeBook.hide();
+        this.state = 'EXPLORING';
+        return;
+      }
+      if (endDayJustPressed) {
+        this.routeBook.hide();
+        this.openDayClose();
+      }
       return;
     }
 
@@ -184,6 +246,16 @@ export class DistrictScene extends Phaser.Scene {
       return;
     }
 
+    if (tabJustPressed) {
+      this.openRouteBook();
+      return;
+    }
+
+    if (endDayJustPressed) {
+      this.openDayClose();
+      return;
+    }
+
     const facing = this.controller.update(this.player.sprite, this.keys, false);
     if (facing) {
       this.player.facing = facing;
@@ -210,13 +282,18 @@ export class DistrictScene extends Phaser.Scene {
     const prospectStatus = this.gameState.getProspectStatus(npc.data.id);
     const dealStatus = this.gameState.getDealStatus(npc.data.id);
 
-    if (prospectStatus === 'qualified' && (dealStatus === 'none' || dealStatus === 'deferred')) {
-      this.launchEncounter(npc);
+    if (prospectStatus === 'qualified' && dealStatus === 'won') {
+      const job = this.gameState.getActiveJobForNpc(npc.data.id, this.gameState.getCurrentDay());
+      if (job) {
+        this.launchServiceJob(npc, job.id);
+        return;
+      }
+      this.openWonAccountPanel(npc);
       return;
     }
 
-    if (prospectStatus === 'qualified' && dealStatus === 'won') {
-      this.openWonAccountPanel(npc);
+    if (prospectStatus === 'qualified' && (dealStatus === 'none' || dealStatus === 'deferred')) {
+      this.launchEncounter(npc);
       return;
     }
 
@@ -305,8 +382,12 @@ export class DistrictScene extends Phaser.Scene {
         monthlyValueCents: result.priceCents,
         openedTick: this.gameState.currentTick(),
         openingNotes: result.summaryLine,
+        lastServicedDay: null,
+        totalEarnedCents: 0,
+        jobsCompleted: 0,
       };
       this.gameState.openAccount(account);
+      this.scheduleFirstJob(account);
     }
 
     this.scene.resume();
@@ -315,13 +396,115 @@ export class DistrictScene extends Phaser.Scene {
     this.toast.showRaw(toastMessage, this.toastColorFor(nextDealStatus));
   }
 
+  private scheduleFirstJob(account: AccountRecord): void {
+    const plan = getServicePlan(account.plan);
+    this.gameState.scheduleJob({
+      accountId: account.id,
+      npcId: account.npcId,
+      servicePlanId: plan.id,
+      scheduledDay: this.gameState.getCurrentDay(),
+      zonesTotal: plan.defaultZoneCount,
+    });
+  }
+
+  private launchServiceJob(npc: Npc, jobId: string): void {
+    const job = this.gameState.startJob(jobId);
+    const account = this.gameState.getAccount(job.accountId);
+    if (!account) return;
+    const plan = getServicePlan(account.plan);
+    const layout = getYardLayout(npc.data.id);
+
+    this.state = 'SERVICE_JOB';
+    this.prompt.hide();
+
+    const serviceScene = this.scene.get('ServiceJobScene');
+    serviceScene.events.once(SERVICE_JOB_RESULT_EVENT, (payload: ServiceJobCompletionPayload) => {
+      this.handleServiceJobResult(payload);
+    });
+
+    const data: ServiceJobSceneData = {
+      init: {
+        jobId: job.id,
+        accountId: account.id,
+        npcId: npc.data.id,
+        npcName: npc.data.name,
+        servicePlanId: plan.id,
+        basePayoutCents: plan.basePayoutCents,
+        serviceLabel: plan.serviceLabel,
+        layout,
+      },
+    };
+    this.scene.pause();
+    this.scene.launch('ServiceJobScene', data);
+  }
+
+  private handleServiceJobResult(payload: ServiceJobCompletionPayload): void {
+    const { jobId, result } = payload;
+    this.gameState.finishJob({
+      jobId,
+      status: result.outcome,
+      qualityScore: result.qualityScore,
+      payoutCents: result.payoutCents,
+      zonesCleared: result.zonesCleared,
+      qualityLabel: result.qualityLabel,
+    });
+
+    this.scene.resume();
+    this.state = 'EXPLORING';
+
+    const npcName = this.gameState.getJob(jobId)?.npcId ?? jobId;
+    const account = this.npcsById.get(npcName)?.data.name ?? npcName;
+    const tone = result.outcome === 'completed' ? '#6ec27a' : '#c25450';
+    const message =
+      result.outcome === 'completed'
+        ? `${account} — Job done (${formatDollars(result.payoutCents)})`
+        : `${account} — Job did not finish`;
+    this.toast.showRaw(message, this.hexFromColor(tone));
+  }
+
+  private openRouteBook(): void {
+    this.state = 'ROUTE_BOOK';
+    this.prompt.hide();
+    this.routeBook.show();
+  }
+
+  private openDayClose(): void {
+    this.state = 'DAY_CLOSE';
+    this.routeBook.hide();
+    this.prompt.hide();
+
+    const dayCloseScene = this.scene.get('DayCloseScene');
+    dayCloseScene.events.once(DAY_CLOSE_DONE_EVENT, () => {
+      this.scene.resume();
+      this.state = 'EXPLORING';
+    });
+
+    const data: DayCloseSceneData = {
+      state: this.gameState,
+      onAdvance: () => {
+        this.gameState.closeDay();
+      },
+    };
+    this.scene.pause();
+    this.scene.launch('DayCloseScene', data);
+  }
+
   private openWonAccountPanel(npc: Npc): void {
     const account = this.gameState.getAccountByNpc(npc.data.id);
-    const planLabel = account ? ACCOUNT_PLAN_LABEL[account.plan] : 'Active account';
-    const value = account ? formatMonthlyValue(account.monthlyValueCents) : '';
-    const body = account
-      ? `Booked: ${planLabel} at ${value}. We're set — just keep showing up.`
-      : "We're booked. Just keep showing up.";
+    const day = this.gameState.getCurrentDay();
+    const lastJob = this.gameState
+      .getJobsForNpc(npc.data.id)
+      .find((j) => j.scheduledDay === day);
+    let body: string;
+    if (account) {
+      const planLabel = ACCOUNT_PLAN_LABEL[account.plan];
+      const value = formatMonthlyValue(account.monthlyValueCents);
+      const earned = formatDollars(account.totalEarnedCents);
+      const todayLine = lastJob ? JOB_STATUS_LABEL[lastJob.status] : 'No service today';
+      body = `${planLabel} at ${value}. Earned ${earned} so far. Today: ${todayLine}.`;
+    } else {
+      body = "We're booked. Just keep showing up.";
+    }
     this.state = 'INFO_PANEL';
     this.prompt.hide();
     this.panel.renderInfo({
@@ -329,7 +512,7 @@ export class DistrictScene extends Phaser.Scene {
       role: npc.data.role,
       body,
       statusLabel: DEAL_STATUS_LABEL.won,
-      statusColor: DEAL_STATUS_COLOR.won,
+      statusColor: lastJob ? JOB_STATUS_COLOR[lastJob.status] : DEAL_STATUS_COLOR.won,
     });
   }
 
@@ -365,10 +548,12 @@ export class DistrictScene extends Phaser.Scene {
   private promptLabelFor(npc: Npc): string {
     const prospect = this.gameState.getProspectStatus(npc.data.id);
     const deal = this.gameState.getDealStatus(npc.data.id);
+    if (prospect === 'qualified' && deal === 'won') {
+      return npc.hasJobReady ? '[E] Service yard' : '[E] Booked';
+    }
     if (prospect === 'qualified' && (deal === 'none' || deal === 'deferred')) {
       return '[E] Pitch';
     }
-    if (prospect === 'qualified' && deal === 'won') return '[E] Booked';
     if (prospect === 'qualified' && deal === 'lost') return '[E] Closed';
     if (prospect === 'unknown') return '[E] Talk';
     return `[E] ${PROSPECT_STATUS_LABEL[prospect]}`;
@@ -376,6 +561,24 @@ export class DistrictScene extends Phaser.Scene {
 
   private toastColorFor(status: 'won' | 'lost' | 'deferred'): number {
     return DEAL_STATUS_COLOR[status];
+  }
+
+  private hexFromColor(hex: string): number {
+    return parseInt(hex.replace('#', ''), 16);
+  }
+
+  private refreshJobMarkers(): void {
+    const day = this.gameState.getCurrentDay();
+    for (const npc of this.npcs) {
+      const job = this.gameState.getActiveJobForNpc(npc.data.id, day);
+      npc.setJobReady(!!job && job.status === 'scheduled');
+    }
+  }
+
+  private refreshDayBanner(): void {
+    const day = this.gameState.getCurrentDay();
+    const districtName = starterDistrict.name;
+    this.dayBannerText.setText(`${districtName} — Day ${day}`);
   }
 
   private findNearestNpcInRange(): Npc | null {

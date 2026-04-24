@@ -27,4 +27,11 @@ export interface DistrictData {
   readonly spawn: TilePos;
 }
 
-export type SceneState = 'EXPLORING' | 'DIALOGUE' | 'INFO_PANEL' | 'ENCOUNTER';
+export type SceneState =
+  | 'EXPLORING'
+  | 'DIALOGUE'
+  | 'INFO_PANEL'
+  | 'ENCOUNTER'
+  | 'ROUTE_BOOK'
+  | 'SERVICE_JOB'
+  | 'DAY_CLOSE';

@@ -13,6 +13,9 @@ export interface AccountRecord {
   readonly monthlyValueCents: number;
   readonly openedTick: number;
   readonly openingNotes: string | null;
+  lastServicedDay: number | null;
+  totalEarnedCents: number;
+  jobsCompleted: number;
 }
 
 export const ACCOUNT_PLAN_LABEL: Readonly<Record<AccountPlan, string>> = {
@@ -26,4 +29,9 @@ export const ACCOUNT_PLAN_LABEL: Readonly<Record<AccountPlan, string>> = {
 export function formatMonthlyValue(cents: number): string {
   const dollars = cents / 100;
   return `$${dollars.toFixed(0)}/mo`;
+}
+
+export function formatDollars(cents: number): string {
+  const dollars = cents / 100;
+  return `$${dollars.toFixed(0)}`;
 }

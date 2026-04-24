@@ -14,6 +14,8 @@ export interface InputKeys {
   altInteract: Phaser.Input.Keyboard.Key;
   cancel: Phaser.Input.Keyboard.Key;
   digits: ReadonlyArray<Phaser.Input.Keyboard.Key>;
+  routeBook: Phaser.Input.Keyboard.Key;
+  endDay: Phaser.Input.Keyboard.Key;
 }
 
 export class PlayerController {
@@ -25,6 +27,8 @@ export class PlayerController {
       throw new Error('PlayerController: keyboard input plugin is unavailable.');
     }
     const K = Phaser.Input.Keyboard.KeyCodes;
+    const tabKey = kb.addKey(K.TAB);
+    kb.addCapture('TAB');
     return {
       up: kb.addKey(K.W),
       down: kb.addKey(K.S),
@@ -43,6 +47,8 @@ export class PlayerController {
         kb.addKey(K.THREE),
         kb.addKey(K.FOUR),
       ],
+      routeBook: tabKey,
+      endDay: kb.addKey(K.N),
     };
   }
 

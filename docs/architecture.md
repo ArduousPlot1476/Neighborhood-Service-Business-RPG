@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes only what exists today (M3). It updates as the game grows.
+This document describes only what exists today (M4). It updates as the game grows.
 
 ## Boot flow
 
@@ -9,103 +9,101 @@ index.html
   |-- <script type="module" src="/src/main.ts">
 main.ts
   |-- createGame('app')                    // src/game/Game.ts
-         |-- new Phaser.Game(config)       // config assembled in Game.ts
-                |-- scenes: [BootScene, PreloadScene, DistrictScene, ClosingEncounterScene]
+         |-- new Phaser.Game(config)
+                |-- scenes: [
+                      BootScene,
+                      PreloadScene,
+                      DistrictScene,
+                      ClosingEncounterScene,
+                      ServiceJobScene,
+                      DayCloseScene,
+                    ]
 
 src/game/config.ts is constants only (GAME_WIDTH, GAME_HEIGHT, TILE_SIZE).
-Scenes are imported in Game.ts, never in config.ts, so that scene files can freely import TILE_SIZE without forming an import cycle.
+Scenes are imported in Game.ts, never in config.ts.
 ```
 
-`BootScene` is intentionally trivial — a seam for future "choose save slot" / splash work. It immediately hands off to `PreloadScene`.
+`BootScene` immediately hands off to `PreloadScene`. `PreloadScene` generates all runtime textures and starts `DistrictScene`. `DistrictScene` runs `validateContent(...)` at the top of `create()` and throws if anything is missing or dangling.
 
-`PreloadScene` generates all runtime textures (tileset + person sprite) at runtime. Nothing is loaded from disk; the repo stays self-contained while design is moving.
-
-`DistrictScene` is the play scene. It owns: tile content, player, NPCs, camera, prompt + dialogue panel + status toast, the in-memory `GameState`, and the `DialogueController`. On boot it runs `validateContent(...)` against authored content and throws if anything is missing or dangling.
-
-`ClosingEncounterScene` is the encounter scene. It is launched in parallel by `DistrictScene` (via `scene.launch` while `DistrictScene` is paused) for any qualified prospect with no won/lost deal yet. When the encounter resolves, it emits `closing:result` and stops itself; `DistrictScene` resumes.
+`DistrictScene` is the hub. It pauses itself when launching `ClosingEncounterScene`, `ServiceJobScene`, or `DayCloseScene`, listens for that scene's one-shot completion event, and resumes when the result handler is done. The `RouteBookOverlay` is in-scene (not a separate Phaser scene) — it's a `scrollFactor=0` widget over `DistrictScene`.
 
 ## Rendering
 
-- `pixelArt: true`, `roundPixels: true`, `antialias: false`.
-- Internal resolution `640x360` (16:9), `Phaser.Scale.FIT`, centered.
-- Tile size `16`. Starter district is `50 x 34` tiles (`800 x 544` world pixels).
+Same as M3 — pixelArt + roundPixels + antialias-off, 640x360 internal, FIT scale, tile size 16. Service yards render in a smaller virtual area centered in the same canvas; they don't have their own tilemap, just a coloured grass rectangle and zone rectangles drawn directly.
 
-## World data
+## State domains (M4)
 
-Built programmatically in `src/content/districts/starterDistrict.ts`, exporting a `DistrictData` record. NPCs live in `src/content/npcs/starterDistrictNpcs.ts` and carry placement, name, tint, role, and a `dialogueId`. Profiles live alongside in `src/content/prospects/starterDistrictProspects.ts` and are looked up via `getProspectProfile(npcId)`.
+Four explicitly separate domains on `GameState`. Each has its own record type, listener event, and slice in `toJSON()`:
 
-## State domains (M3)
+| Domain         | File                  | Statuses                                                    | What writes it                       |
+| -------------- | --------------------- | ----------------------------------------------------------- | ------------------------------------ |
+| Qualification  | `state/prospects.ts`  | `unknown / qualified / deferred / disqualified`             | Dialogue effects                     |
+| Closing/deal   | `state/deals.ts`      | `none / in_progress / won / lost / deferred`                | `ClosingEncounterScene` result       |
+| Accounts       | `state/accounts.ts`   | (presence = open) + `lastServicedDay`, `totalEarnedCents`, `jobsCompleted` | `gameState.openAccount(...)` on win, mutated on job completion |
+| Jobs           | `state/jobs.ts`       | `scheduled / in_progress / completed / missed / failed`     | `ServiceJobScene` result, `closeDay()` |
 
-`src/state/GameState.ts` is the single in-memory store. Three explicitly separate domains, each with its own record type, listener event, and serialised shape:
+Closing outcomes never overwrite prospect status. Job outcomes never overwrite deal status. The only place all four are combined is `DistrictScene.engage(npc)`, which reads prospect, deal, and (if won) the day's job to decide what UI to open.
 
-| Domain         | File                  | Statuses                                            | What writes it                       |
-| -------------- | --------------------- | --------------------------------------------------- | ------------------------------------ |
-| Qualification  | `state/prospects.ts`  | `unknown / qualified / deferred / disqualified`     | Dialogue effects (M2)                |
-| Closing/deal   | `state/deals.ts`      | `none / in_progress / won / lost / deferred`        | `ClosingEncounterScene` result (M3)  |
-| Accounts       | `state/accounts.ts`   | `AccountRecord` per won deal                        | `gameState.openAccount(...)` on win  |
+`GameState` also owns the day model: `currentDay: number` (starts at 1), `dayState: 'in_progress' | 'closed'`, and `closeDay()` which marks today's still-`scheduled` jobs as `missed`, advances the day, and rolls new scheduled jobs for any account whose plan cadence has come due.
 
-Closing outcomes never overwrite prospect status. A `qualified` prospect whose deal is `lost` stays `qualified` — the lost deal is its own piece of state, the door is closed at the deal layer not the qualification layer. The `DistrictScene` re-entry router is the only place that combines them to decide what UI to show.
+`toJSON()` returns `{ tick, currentDay, dayState, prospects, deals, accounts, jobs }` — all four domains plus the day clock, ready for M7's save/load.
 
-`GameState` exposes `toJSON()` returning `{ tick, prospects, deals, accounts }` — ready for M7's save/load to `JSON.stringify` the whole store.
+## Dialogue + closing systems (M2-M3 — unchanged)
 
-## Dialogue system (M2 — unchanged)
+Both still follow the **content / logic / view** split documented in earlier milestones. M4 added no new dialogue or closing types. The closing scene remains the only thing that writes `deals`; it does not know about `jobs` or `accounts` directly. The encounter result handler in `DistrictScene` is the bridge that turns a `win` into both an account *and* a first scheduled job.
 
-Three layers: **content** (`src/content/dialogue/`), **logic** (`src/systems/dialogue/DialogueController.ts`), **view** (`src/systems/interactions/InteractionPanel.ts`). Effects (`setStatus`, `end`) write to `GameState.prospects` only. M3 added a new `renderInfo(...)` method on the panel for short, choice-less post-deal panels (won/lost), reusing the same widget without going through the dialogue runner.
+## Service-job system (M4)
 
-## Closing system (M3)
+Same content / logic / view split:
 
-Four pieces, kept decoupled the same way as the dialogue system:
-
-1. **Types** — `src/systems/closing/closingTypes.ts` exports `EncounterMeter`, `EncounterMeters`, `EncounterAction`, `MeterDelta`, `CustomerArchetype`, `ObjectionSet`, `EncounterInit`, `EncounterViewModel`, `EncounterResult`, `EncounterOutcome`. No Phaser imports.
+1. **Types** — `src/systems/service/serviceJobTypes.ts` exports `ServiceJobInit`, `ServiceJobViewModel`, `ServiceJobResult`, `ZoneRuntime`, `ServiceJobOutcome`. No Phaser imports.
 2. **Content** —
-   - `src/content/closing/customerArchetypes.ts` — four archetypes (`eager_believer`, `careful_decider`, `pragmatic_holdout`, `skeptical_haggler`) with starting meters, plan, base/floor price, and outcome lines. `deriveArchetypeId(profile)` maps a `QualificationProfile` to an archetype id.
-   - `src/content/closing/closingActions.ts` — five actions (`ask_need`, `present_service`, `anchor_price`, `offer_reassurance`, `close_now`). Each carries a base meter delta, optional per-archetype mods, per-archetype reaction lines, and a composure cost. `close_now` is `terminal`.
-   - `src/content/closing/objectionSets.ts` — per-archetype lines that fire when a meter drops below a threshold. Selected by the controller after each action and appended to the reaction line.
-3. **Logic** — `src/systems/closing/ClosingEncounterController.ts` walks the encounter (no Phaser). Tracks the six meters, applies action deltas + archetype mods, checks objection triggers, advances turn, and resolves the outcome on `close_now`, on composure ≤ 0, or on `walkAway()`.
-4. **View** — `src/scenes/ClosingEncounterScene.ts` hosts the UI: header, six meter bars, reaction line, action list with descriptions, and a result overlay.
+   - `src/content/services/servicePlans.ts` — registry of `AccountPlan -> ServicePlan { cadenceDays, basePayoutCents, defaultZoneCount, serviceLabel }`.
+   - `src/content/jobs/starterJobs.ts` — per-NPC `YardLayout` ({ widthTiles, heightTiles, playerSpawn, timerSeconds, zones[] }). Zones carry `kind`, position, size, `secondsToService`, and a label.
+3. **Logic** — `src/systems/service/ServiceJobController.ts` walks the encounter (no Phaser). Each `tick(dt, activeZoneId, isServicing)` advances the timer, accumulates progress on the active zone if servicing, recomputes the projected score (sum of clamped per-zone ratios / total zones), and resolves on timer-zero or all-zones-done. `walkAway()` style finish via `forceFinish()` exists for `Esc`.
+4. **View** — `src/scenes/ServiceJobScene.ts` renders the HUD (timer bar, zones cleared, projected payout) and the yard (grass + coloured zone rectangles + per-zone progress bars). The player sprite is a non-physics `GameObject.Sprite` with manually clamped movement; the scene does not need a tilemap or arcade collisions for a 4-zone slice.
 
-Outcome thresholds (live in the controller):
+Outcome: `completed` if all zones cleared OR timer expired with score above the failure floor (5%); `failed` otherwise. `qualityFromScore(score)` buckets the float into `unfinished | rough | solid | pristine`. Payout is `round(basePayoutCents * score)`.
 
-- **win** — `trust >= 60 && interest >= 65 && budgetFlex >= 50`
-- **lose** — `trust <= 25 || interest <= 25`
-- **defer** — anything else (also: `walkAway()` always defers)
+When the scene resolves the player presses `E` to dismiss; the scene emits `service:result` and stops itself; `DistrictScene` receives the payload, calls `gameState.finishJob(...)` (which also updates the account's `totalEarnedCents`, `lastServicedDay`, and `jobsCompleted`), resumes, and surfaces a toast.
 
-Win price is interpolated between archetype `priceFloorCents` and `basePriceCents` based on final budget flex.
+## Route Book + day cycle (M4)
+
+`RouteBookOverlay` is an in-scene UI widget, not a Phaser scene. It reads from `GameState` directly on each `show()`/`refresh()` — no caching. Per-account row shows: customer name, plan label, monthly value, total earned, last serviced day, and today's job status. Header carries day number, account count, total recurring, lifetime earned. Footer shows a contextual hint (jobs still scheduled today, etc.).
+
+`Tab` toggles the overlay; `Esc` also closes it. While `ROUTE_BOOK` state is active, movement is locked. `N` ends the day from any non-modal state — from exploration directly, or from inside the route book.
+
+`DayCloseScene` is a real Phaser scene (paused-launch pattern same as the encounter). It reads `state.getJobsForDay(currentDay)` to build the per-job summary, then on `[E]` calls the `onAdvance` callback (which calls `state.closeDay()`) and stops. `closeDay()` marks unattended scheduled jobs as `missed`, advances the day counter, and schedules next jobs for any account whose plan cadence has come due since their last finished job.
 
 ## Scene state and handoff
 
-`SceneState = 'EXPLORING' | 'DIALOGUE' | 'INFO_PANEL' | 'ENCOUNTER'`.
+`SceneState = 'EXPLORING' | 'DIALOGUE' | 'INFO_PANEL' | 'ENCOUNTER' | 'ROUTE_BOOK' | 'SERVICE_JOB' | 'DAY_CLOSE'`.
 
-The `DistrictScene.engage(npc)` router decides what happens on interact:
+`DistrictScene.engage(npc)` router (now four-way):
 
 ```
-prospect == 'qualified' AND deal in {none, deferred} -> launchEncounter   (ENCOUNTER)
-prospect == 'qualified' AND deal == 'won'            -> openWonAccountPanel   (INFO_PANEL)
-prospect == 'qualified' AND deal == 'lost'           -> openLostDealPanel     (INFO_PANEL)
-otherwise                                            -> openDialogue          (DIALOGUE)
+prospect == 'qualified' AND deal == 'won' AND today's job is scheduled  -> launchServiceJob
+prospect == 'qualified' AND deal == 'won' AND no active job today       -> openWonAccountPanel
+prospect == 'qualified' AND deal in {none, deferred}                    -> launchEncounter
+prospect == 'qualified' AND deal == 'lost'                              -> openLostDealPanel
+otherwise                                                               -> openDialogue
 ```
 
-Encounter handoff:
+Service-job handoff mirrors the encounter handoff: `startJob(jobId)` flips it to `in_progress`, register a one-shot listener, `scene.pause()` + `scene.launch('ServiceJobScene', ...)`. On result, `finishJob(...)` writes status/quality/payout and updates the account's totals; `scene.resume()`; toast.
 
-1. `setDealStatus(npcId, 'in_progress')` and `recordEncounterAttempt(npcId)` so the deal record exists and the attempt counter advances even if the player walks away.
-2. `scene.get('ClosingEncounterScene').events.once(ENCOUNTER_RESULT_EVENT, handler)` to hear the result exactly once.
-3. `scene.pause()` then `scene.launch('ClosingEncounterScene', { init })` — the district scene freezes in place, the encounter renders over it.
-4. On result: write `dealStatus = won|lost|deferred`, `openAccount(...)` if win, `scene.resume()`, set state back to `EXPLORING`, surface a deal toast.
+Day-close handoff: `scene.pause()` + `scene.launch('DayCloseScene', { state, onAdvance })`; on done event, resume.
 
 ## Content validation
 
-`src/systems/content/validateContent.ts` runs at the top of `DistrictScene.create()`. It checks:
+`validateContent(...)` (now M4) checks all of:
 
-- duplicate NPC ids
-- every `dialogueId` resolves to a graph
-- every graph's `rootId` is in `nodes`
-- every option's `next` target exists
-- every `resumeRule.nodeId` exists
-- every prospect seed has a matching NPC placement
-- every profile derives a known archetype
+- duplicate NPC ids, missing dialogue ids, dangling option/resume targets (M2/M3)
+- prospect seeds with no NPC placement, profiles deriving unknown archetypes (M3)
+- service plans with non-positive cadence/payout/zones (M4)
+- yard layouts missing their NPC, duplicate yards, empty zone lists, non-positive `secondsToService` (M4)
 
-A failure throws `ContentValidationError` at boot — bad content fails loudly instead of silently producing dead conversations or null encounters.
+Failure throws `ContentValidationError` at the top of `DistrictScene.create()`.
 
-## Where M4 plugs in
+## Where M5 plugs in
 
-The Route Book overlay reads `gameState.listAccounts()` directly. The first service-job loop will need a `JobRecord` model in `src/state/jobs.ts` and a tick-advance method on `GameState`; nothing in M3 needs to change to support it. The encounter scene is independent of the day/job model — it cares about a single negotiation, not the calendar.
+Account satisfaction will live as a per-account derived field (`totalCompleted` and `totalMissedOrFailed` are already on the record). M5 will add a sliding-window satisfaction calc and route it back into recurring value. The encounter system stays unchanged. The job system gets one optional new outcome (`'rushed'`?) but the existing scoring math already supports any quality fraction, so it's a content/balance change rather than a structural one. A second district means parameterising the world bound and tile data; no scene-flow change is needed.

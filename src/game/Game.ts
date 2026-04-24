@@ -3,6 +3,8 @@ import { BootScene } from '../scenes/BootScene';
 import { PreloadScene } from '../scenes/PreloadScene';
 import { DistrictScene } from '../scenes/DistrictScene';
 import { ClosingEncounterScene } from '../scenes/ClosingEncounterScene';
+import { ServiceJobScene } from '../scenes/ServiceJobScene';
+import { DayCloseScene } from '../scenes/DayCloseScene';
 import { GAME_HEIGHT, GAME_WIDTH } from './config';
 
 export function createGame(parentId: string): Phaser.Game {
@@ -25,7 +27,14 @@ export function createGame(parentId: string): Phaser.Game {
         debug: false,
       },
     },
-    scene: [BootScene, PreloadScene, DistrictScene, ClosingEncounterScene],
+    scene: [
+      BootScene,
+      PreloadScene,
+      DistrictScene,
+      ClosingEncounterScene,
+      ServiceJobScene,
+      DayCloseScene,
+    ],
   };
   return new Phaser.Game(config);
 }

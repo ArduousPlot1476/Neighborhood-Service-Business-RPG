@@ -8,7 +8,10 @@ export class Npc {
   readonly sprite: Phaser.Physics.Arcade.Sprite;
   readonly data: NpcData;
   private readonly badge: Phaser.GameObjects.Rectangle;
+  private readonly jobMarker: Phaser.GameObjects.Text;
   private status: ProspectStatus = 'unknown';
+  private jobReady = false;
+  private markerTween: Phaser.Tweens.Tween | null = null;
 
   constructor(scene: Phaser.Scene, data: NpcData) {
     this.data = data;
@@ -29,6 +32,27 @@ export class Npc {
     this.badge.setStrokeStyle(1, 0x0f1a14);
     this.badge.setDepth(11);
     this.badge.setVisible(false);
+
+    this.jobMarker = scene.add
+      .text(worldX, worldY - 18, '!', {
+        fontFamily: 'monospace',
+        fontSize: '10px',
+        color: '#f0c878',
+        stroke: '#0f1a14',
+        strokeThickness: 2,
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(12);
+    this.jobMarker.setVisible(false);
+
+    this.markerTween = scene.tweens.add({
+      targets: this.jobMarker,
+      y: this.jobMarker.y - 2,
+      duration: 600,
+      ease: 'Sine.easeInOut',
+      yoyo: true,
+      repeat: -1,
+    });
   }
 
   setStatus(status: ProspectStatus): void {
@@ -41,7 +65,27 @@ export class Npc {
     this.badge.setVisible(true);
   }
 
+  setJobReady(ready: boolean): void {
+    if (this.jobReady === ready) return;
+    this.jobReady = ready;
+    this.jobMarker.setVisible(ready);
+  }
+
   get currentStatus(): ProspectStatus {
     return this.status;
+  }
+
+  get hasJobReady(): boolean {
+    return this.jobReady;
+  }
+
+  destroy(): void {
+    if (this.markerTween) {
+      this.markerTween.stop();
+      this.markerTween = null;
+    }
+    this.jobMarker.destroy();
+    this.badge.destroy();
+    this.sprite.destroy();
   }
 }

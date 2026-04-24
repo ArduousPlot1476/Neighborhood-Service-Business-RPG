@@ -11,15 +11,33 @@ Explore neighborhoods, identify prospects, qualify leads, enter dedicated Closin
 3. **Conversation-as-gameplay.** The "boss fight" is closing a deal. Later milestones build up qualification, trust, objections, and the Closing Encounter mini-game.
 4. **Small loop, visible growth.** Small routes, steady recurring jobs, a rival applying pressure to the same blocks you work. Your Route Book is the progression track.
 
-## Near-term scope boundary (through M3)
+## Near-term scope boundary (through M4)
 
-The district is visible and playable. NPCs can be qualified, deferred, or disqualified through authored branching dialogue. A `qualified` lead can be closed through a dedicated Closing Encounter scene that produces a win, a loss, or a defer — and a win opens a minimal recurring account. Performing the work and surfacing accounts in a Route Book are still deferred to M4+.
+The full prospecting-to-payday arc now plays end-to-end:
 
-The full prospecting-to-account arc now plays end-to-end on at least one NPC: walk up, qualify through dialogue, re-engage, enter the Closing Encounter, choose negotiation actions, see an outcome, and (on a win) leave with an account on the books.
+1. Walk the district, find an NPC, qualify them through dialogue
+2. Re-engage; enter the Closing Encounter; win an account
+3. Account opens with a first job auto-scheduled for today
+4. Walk back to that NPC; an `!` marker shows their yard is ready
+5. Engage; the dedicated Service Job scene opens; service the four zones under the timer
+6. Result writes payout, quality, and updates the account's lifetime totals
+7. Open the Route Book (`Tab`) to see route growth; `[N]` ends the day; Day Close summarises earnings and previews tomorrow
+
+Customer satisfaction effects, a real per-day energy budget, multi-district travel, rivals, and save/load are all still deferred.
+
+## Service Job (M4)
+
+A separate scene, opened from the district when a booked NPC has a job ready today. The yard is a small grass rectangle with four coloured zones. Each zone has a kind (lawn / edge / beds / hedge / walkway) and a `secondsToService` cost. Stand inside a zone and hold `E`; the zone progress bar fills until the zone is done and turns its "done" colour. A 60-80 second timer counts down. Quality = average of clamped per-zone ratios. Payout = `basePayout × quality`. Pressing `Esc` finishes early; if you've cleared more than 5%, it scores as `completed` at whatever quality you reached. Jobs the day ends without finishing become `missed`.
+
+## Route Book + day cycle (M4)
+
+`Tab` opens the Route Book overlay. It lists every account with plan, recurring monthly value, lifetime earned, last service day, and today's job status. The header summarises day number, account count, total recurring value, and lifetime earnings.
+
+`N` ends the day. The Day Close screen shows what was earned today, how many jobs were completed/failed/missed, the per-job breakdown, and a one-line teaser for tomorrow. On confirm, the day advances and any account whose plan cadence has come due gets a fresh job scheduled for the new day.
 
 ## State domains
 
-Three separate state stores, one per concern. They are deliberately not collapsed.
+Four separate state stores, one per concern. They are deliberately not collapsed.
 
 **Prospect / qualification (M2)** — was the door worth knocking on?
 - `unknown` — not yet read, or read inconclusively
@@ -34,9 +52,16 @@ Three separate state stores, one per concern. They are deliberately not collapse
 - `lost` — the encounter ended without a deal; door is closed at the deal layer
 - `deferred` — the encounter ended inconclusively; the player can re-pitch
 
-**Account (M3)** — minimal record of a won deal: plan, monthly value, opening notes. Persists for the rest of the session and will surface in M4's Route Book.
+**Account (M3, extended in M4)** — record of a won deal: plan, monthly value, opening notes, plus running totals (`lastServicedDay`, `totalEarnedCents`, `jobsCompleted`). Surfaced in the Route Book.
 
-Closing outcomes never overwrite qualification status. A `qualified` prospect whose deal is `lost` stays `qualified` in the prospect ledger — the door is closed at the deal layer, not the qualification layer. This separation matters because M4+ may let a re-pitch unlock with new tools, content, or rivalrous pressure without touching the qualification record.
+**Job (M4)** — a scheduled (or completed) piece of work for an account.
+- `scheduled` — exists, hasn't been done yet
+- `in_progress` — currently inside the Service Job scene
+- `completed` — done; carries quality bucket and payout
+- `failed` — engaged but did not clear meaningfully (≤5% score)
+- `missed` — day ended without engagement
+
+Closing outcomes never overwrite qualification status, and job outcomes never overwrite closing status. A `qualified` prospect whose deal is `lost` stays `qualified` in the prospect ledger; an account whose job is `missed` stays a `won` deal. This separation matters because M5+ will let satisfaction degrade churn without touching the qualification record.
 
 A small coloured pip above an NPC reflects their qualification status once it leaves `unknown`. The interaction prompt label changes after qualification (e.g. "[E] Pitch" while a deal is open, "[E] Booked" after a win).
 
@@ -66,6 +91,9 @@ Outcomes:
 - Interact / advance single-option: `E` or `Space`
 - Choose dialogue / encounter option: `1` – `5`
 - Cancel dialogue / walk away from encounter: `Esc`
+- Hold to service a job zone: `E` (while standing in a coloured zone)
+- Open / close Route Book: `Tab`
+- End day: `N`
 
 Gamepad and touch are out of scope for now.
 

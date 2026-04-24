@@ -57,20 +57,34 @@ Delivered:
 
 Explicitly *not* in M3: Route Book UI, scheduling, service-job loop, day close, rivals, save/load, audio.
 
-## M4 - Route Book + first service-job loop (next)
+## M4 - Route Book + first service-job loop
 
-Goal: surface won accounts in a Route Book UI and play the first service-job loop on a real account.
+**Status: complete.**
+
+Delivered:
+
+- New `jobs` state domain on `GameState` (`JobRecord` with status, quality, payout, scheduled day, zone counters), separate from prospects/deals/accounts
+- Lightweight day model: `currentDay` (starts at 1), `dayState`, `closeDay()` advancing the day and rolling new scheduled jobs based on each plan's cadence
+- `RouteBookOverlay` (Tab to toggle): per-account plan, recurring value, total earned to date, last serviced day, today's job status; whole-route summary header (day, account count, total recurring, lifetime earned)
+- Won deals now schedule a first job for the current day automatically; an `!` marker bobs above an NPC whose yard has a job ready
+- Dedicated `ServiceJobScene`: 4-zone yard, 60-80s timer, hold-`E` to service while standing in a coloured zone, projected payout updates live as zones clear; result panel shows quality (unfinished/rough/solid/pristine), zones cleared, time used, and payout vs. base
+- `DayCloseScene`: earnings today, completed/missed/failed counts, per-job breakdown, lifetime totals, and a teaser line for the next day; `closeDay()` advances day and schedules next jobs on cadence
+- District banner shows current day; engagement router now handles "qualified + won + job-ready-today" → `ServiceJobScene` and "qualified + won + no active job" → account info panel
+- Content validator extended to cover service plans (cadence/payout/zone counts) and yard layouts (existence per NPC, zones non-empty, positive service durations)
+
+Explicitly *not* in M4: rivals, save/load, customer-satisfaction effects from missed/failed jobs, multi-day route planning, audio.
+
+## M5 - Day cycle + service-job depth (next)
+
+Goal: deepen the per-day loop. Job quality starts to feed back into account satisfaction; missed jobs dent recurring value; travel time and a per-day energy/composure budget create choices about which jobs to chase.
 
 Planned:
 
-- Route Book overlay listing accounts with plan, monthly value, and last-serviced state
-- A "Day" abstraction: time advances when the player triggers Start Day / End Day
-- First service-job loop: walk to a booked NPC's yard, perform a minimal job action, completion writes a `JobRecord` and advances time
-- Optional: stub a Day Close summary screen showing accounts touched + revenue earned
-
-## M5 - Day cycle + service-job depth
-
-Goal: deepen the per-day loop with travel, job quality, and customer satisfaction effects on accounts.
+- Account satisfaction tracked over recent service quality
+- Missed/failed jobs cost recurring value over time
+- A simple per-day energy/composure budget — service jobs cost it, encounters cost it, optional rest restores it
+- Day Close summary calls out satisfaction shifts and warns about upcoming churn
+- Possibly: a second district to give travel meaningful trade-offs
 
 ## M6 - IronRoot rival pressure
 
