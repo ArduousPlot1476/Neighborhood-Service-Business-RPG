@@ -9,6 +9,7 @@ import {
 } from '../state/accounts';
 import { JOB_STATUS_LABEL } from '../state/jobs';
 import type { GameState } from '../state/GameState';
+import { hasSavedGame } from '../state/saveSystem';
 
 export class RouteBookOverlay {
   private readonly state: GameState;
@@ -136,10 +137,19 @@ export class RouteBookOverlay {
 
     if (accounts.length === 0) {
       this.bodyText.setText('');
-      this.emptyText.setText(
-        'No accounts on the route yet. Knock on doors, qualify a prospect, and close them out.',
-      );
-      this.footerText.setText('[Tab] close   [N] end day (advances to tomorrow)');
+      const hint = [
+        'No accounts on the route yet.',
+        '',
+        'Try this:',
+        '  1. Walk up to a neighbour and press [E] to talk',
+        '  2. Pick the dialogue branch that lands them on "Qualified"',
+        '  3. Re-approach to enter the Closing Encounter, then win the deal',
+        '  4. Their yard will mark a job; service it under the timer',
+        '',
+        'Day 1 starts with three workable doors: Jerry (top-left), Linda (centre), Marcus (top-right).',
+      ].join('\n');
+      this.emptyText.setText(hint);
+      this.footerText.setText(this.footerHint(0));
       return;
     }
 
@@ -190,11 +200,16 @@ export class RouteBookOverlay {
       ),
     ).length;
 
-    this.footerText.setText(
-      readyCount > 0
-        ? `[Tab] close   [N] end day   ${readyCount} job${readyCount === 1 ? '' : 's'} still scheduled today`
-        : '[Tab] close   [N] end day (advances to tomorrow)',
-    );
+    this.footerText.setText(this.footerHint(readyCount));
+  }
+
+  private footerHint(readyCount: number): string {
+    const parts = ['[Tab] close', '[N] end day', '[S] save'];
+    if (hasSavedGame()) parts.push('[Shift+R] clear save');
+    if (readyCount > 0) {
+      parts.push(`${readyCount} job${readyCount === 1 ? '' : 's'} still scheduled today`);
+    }
+    return parts.join('   ');
   }
 
   get isOpen(): boolean {

@@ -5,7 +5,11 @@ import { listYardLayouts } from '../../content/jobs/starterJobs';
 import { listDisruptionEvents } from '../../content/events/disruptionEvents';
 import type { DialogueGraph } from '../dialogue/dialogueTypes';
 import type { NpcData } from '../../types';
-import type { AccountPlan } from '../../state/accounts';
+import {
+  ACCOUNT_INITIAL_SATISFACTION,
+  riskBandFromSatisfaction,
+  type AccountPlan,
+} from '../../state/accounts';
 
 export interface ContentValidationInput {
   readonly npcs: ReadonlyArray<NpcData>;
@@ -109,6 +113,13 @@ export function validateContent(input: ContentValidationInput): void {
         errors.push(`Yard layout "${layout.npcId}" zone "${zone.id}" has non-positive secondsToService.`);
       }
     }
+  }
+
+  const initialBand = riskBandFromSatisfaction(ACCOUNT_INITIAL_SATISFACTION);
+  if (initialBand !== 'healthy') {
+    errors.push(
+      `ACCOUNT_INITIAL_SATISFACTION (${ACCOUNT_INITIAL_SATISFACTION}) puts new accounts in band "${initialBand}"; brand-new accounts would auto-trigger a disruption at the next day close.`,
+    );
   }
 
   const eventIds = new Set<string>();

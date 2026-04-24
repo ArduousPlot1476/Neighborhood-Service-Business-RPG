@@ -1,5 +1,6 @@
 import { getServicePlan } from '../content/services/servicePlans';
 import {
+  ACCOUNT_INITIAL_SATISFACTION,
   clampSatisfaction,
   satisfactionDeltaForCompletedJob,
   satisfactionDeltaForFailedJob,
@@ -73,6 +74,103 @@ export class GameState {
   private readonly jobs = new Map<string, JobRecord>();
   private readonly disruptions = new Map<string, DisruptionRecord>();
   private readonly listeners = new Set<GameStateListener>();
+
+  static fromSerialized(payload: SerializedGameState): GameState {
+    const state = new GameState();
+    state.tick = typeof payload.tick === 'number' ? payload.tick : 0;
+    state.currentDay = typeof payload.currentDay === 'number' && payload.currentDay >= 1
+      ? payload.currentDay
+      : 1;
+    state.dayState = payload.dayState === 'closed' ? 'closed' : 'in_progress';
+
+    for (const raw of payload.prospects ?? []) {
+      const record: ProspectRecord = {
+        npcId: raw.npcId,
+        status: raw.status ?? 'unknown',
+        lastUpdatedTick: typeof raw.lastUpdatedTick === 'number' ? raw.lastUpdatedTick : 0,
+        notes: raw.notes ?? null,
+      };
+      state.prospects.set(record.npcId, record);
+    }
+    for (const raw of payload.deals ?? []) {
+      const record: DealRecord = {
+        npcId: raw.npcId,
+        status: raw.status ?? 'none',
+        attempts: typeof raw.attempts === 'number' ? raw.attempts : 0,
+        lastOutcome: raw.lastOutcome ?? null,
+        lastUpdatedTick: typeof raw.lastUpdatedTick === 'number' ? raw.lastUpdatedTick : 0,
+        notes: raw.notes ?? null,
+      };
+      state.deals.set(record.npcId, record);
+    }
+    for (const raw of payload.accounts ?? []) {
+      const record: AccountRecord = {
+        id: raw.id,
+        npcId: raw.npcId,
+        npcName: raw.npcName,
+        plan: raw.plan,
+        monthlyValueCents: typeof raw.monthlyValueCents === 'number' ? raw.monthlyValueCents : 0,
+        openedTick: typeof raw.openedTick === 'number' ? raw.openedTick : 0,
+        openingNotes: raw.openingNotes ?? null,
+        lastServicedDay: raw.lastServicedDay ?? null,
+        totalEarnedCents: typeof raw.totalEarnedCents === 'number' ? raw.totalEarnedCents : 0,
+        jobsCompleted: typeof raw.jobsCompleted === 'number' ? raw.jobsCompleted : 0,
+        jobsMissed: typeof raw.jobsMissed === 'number' ? raw.jobsMissed : 0,
+        jobsFailed: typeof raw.jobsFailed === 'number' ? raw.jobsFailed : 0,
+        satisfaction: typeof raw.satisfaction === 'number'
+          ? clampSatisfaction(raw.satisfaction)
+          : ACCOUNT_INITIAL_SATISFACTION,
+        nextDueDay: typeof raw.nextDueDay === 'number' ? raw.nextDueDay : state.currentDay,
+        churned: !!raw.churned,
+        churnedDay: raw.churnedDay ?? null,
+      };
+      state.accounts.set(record.id, record);
+    }
+    let maxJobId = 0;
+    for (const raw of payload.jobs ?? []) {
+      const record: JobRecord = {
+        id: raw.id,
+        accountId: raw.accountId,
+        npcId: raw.npcId,
+        servicePlanId: raw.servicePlanId,
+        scheduledDay: typeof raw.scheduledDay === 'number' ? raw.scheduledDay : state.currentDay,
+        status: raw.status ?? 'scheduled',
+        quality: raw.quality ?? null,
+        qualityScore: typeof raw.qualityScore === 'number' ? raw.qualityScore : null,
+        payoutCents: typeof raw.payoutCents === 'number' ? raw.payoutCents : null,
+        zonesCleared: typeof raw.zonesCleared === 'number' ? raw.zonesCleared : 0,
+        zonesTotal: typeof raw.zonesTotal === 'number' ? raw.zonesTotal : 0,
+        startedTick: raw.startedTick ?? null,
+        completedTick: raw.completedTick ?? null,
+      };
+      state.jobs.set(record.id, record);
+      const numeric = idCounterFromString(record.id, 'job_');
+      if (numeric > maxJobId) maxJobId = numeric;
+    }
+    state.jobIdCounter = maxJobId;
+
+    let maxDisruptionId = 0;
+    for (const raw of payload.disruptions ?? []) {
+      const record: DisruptionRecord = {
+        id: raw.id,
+        eventId: raw.eventId,
+        accountId: raw.accountId,
+        npcId: raw.npcId,
+        triggeredDay: typeof raw.triggeredDay === 'number' ? raw.triggeredDay : 1,
+        deadlineDay: typeof raw.deadlineDay === 'number' ? raw.deadlineDay : 1,
+        status: raw.status ?? 'active',
+        resolution: raw.resolution ?? 'pending',
+        narrative: raw.narrative ?? '',
+        resolvedDay: raw.resolvedDay ?? null,
+      };
+      state.disruptions.set(record.id, record);
+      const numeric = idCounterFromString(record.id, 'disruption_');
+      if (numeric > maxDisruptionId) maxDisruptionId = numeric;
+    }
+    state.disruptionIdCounter = maxDisruptionId;
+
+    return state;
+  }
 
   // ---------- prospects ----------
 
@@ -508,4 +606,11 @@ export class GameState {
       listener(change);
     }
   }
+}
+
+function idCounterFromString(id: string, prefix: string): number {
+  if (!id.startsWith(prefix)) return 0;
+  const tail = id.slice(prefix.length);
+  const numeric = Number.parseInt(tail, 10);
+  return Number.isFinite(numeric) ? numeric : 0;
 }

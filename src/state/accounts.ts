@@ -46,7 +46,7 @@ export function formatDollars(cents: number): string {
   return `$${dollars.toFixed(0)}`;
 }
 
-export const ACCOUNT_INITIAL_SATISFACTION = 70;
+export const ACCOUNT_INITIAL_SATISFACTION = 78;
 export const ACCOUNT_SATISFACTION_MAX = 100;
 export const ACCOUNT_SATISFACTION_MIN = 0;
 

@@ -46,6 +46,7 @@ import {
 } from './ServiceJobScene';
 import { DAY_CLOSE_DONE_EVENT, type DayCloseAdvanceResult, type DayCloseSceneData } from './DayCloseScene';
 import { SOLID_TILE_INDICES, TILESET_KEY } from './PreloadScene';
+import { clearSave, readSave, writeSave } from '../state/saveSystem';
 import type { SceneState } from '../types';
 
 const INTERACT_RADIUS = TILE_SIZE * 1.4;
@@ -106,9 +107,32 @@ export class DistrictScene extends Phaser.Scene {
     (this.player.sprite.body as Phaser.Physics.Arcade.Body).setCollideWorldBounds(true);
     this.physics.add.collider(this.player.sprite, layer);
 
-    this.gameState = new GameState();
-    for (const seed of starterDistrictProspects) {
-      this.gameState.registerProspect(seed.npcId);
+    const loadResult = readSave();
+    let loadToastMessage: { text: string; color: number } | null = null;
+    if (loadResult.status === 'ok') {
+      this.gameState = GameState.fromSerialized(loadResult.envelope.payload);
+      for (const seed of starterDistrictProspects) {
+        if (!this.gameState.getProspect(seed.npcId)) {
+          this.gameState.registerProspect(seed.npcId);
+        }
+      }
+      const ageSeconds = Math.round((Date.now() - loadResult.envelope.savedAt) / 1000);
+      loadToastMessage = {
+        text: `Save loaded — Day ${this.gameState.getCurrentDay()} (${formatRelativeAge(ageSeconds)})`,
+        color: 0x6ec27a,
+      };
+    } else {
+      this.gameState = new GameState();
+      for (const seed of starterDistrictProspects) {
+        this.gameState.registerProspect(seed.npcId);
+      }
+      if (loadResult.status === 'corrupt' || loadResult.status === 'incompatible') {
+        loadToastMessage = {
+          text: `Save unreadable (${loadResult.reason}) — starting fresh`,
+          color: 0xc25450,
+        };
+        clearSave();
+      }
     }
     this.disruptions = new DisruptionController(this.gameState);
 
@@ -219,6 +243,12 @@ export class DistrictScene extends Phaser.Scene {
     this.refreshDayBanner();
     this.refreshJobMarkers();
     this.refreshContestedMarkers();
+
+    if (loadToastMessage) {
+      this.time.delayedCall(150, () => {
+        this.toast.showRaw(loadToastMessage!.text, loadToastMessage!.color);
+      });
+    }
   }
 
   override update(): void {
@@ -244,6 +274,15 @@ export class DistrictScene extends Phaser.Scene {
       if (endDayJustPressed) {
         this.routeBook.hide();
         this.openDayClose();
+        return;
+      }
+      if (Phaser.Input.Keyboard.JustDown(this.keys.save)) {
+        this.handleManualSave();
+        return;
+      }
+      if (this.keys.shift.isDown && Phaser.Input.Keyboard.JustDown(this.keys.reset)) {
+        this.handleSaveReset();
+        return;
       }
       return;
     }
@@ -534,6 +573,7 @@ export class DistrictScene extends Phaser.Scene {
     dayCloseScene.events.once(DAY_CLOSE_DONE_EVENT, () => {
       this.scene.resume();
       this.state = 'EXPLORING';
+      this.autoSaveAfterDayClose();
     });
 
     const data: DayCloseSceneData = {
@@ -542,6 +582,35 @@ export class DistrictScene extends Phaser.Scene {
     };
     this.scene.pause();
     this.scene.launch('DayCloseScene', data);
+  }
+
+  private handleManualSave(): void {
+    const result = writeSave(this.gameState);
+    if (result.status === 'ok') {
+      this.toast.showRaw('Game saved', 0x6ec27a);
+      this.routeBook.refresh();
+    } else {
+      this.toast.showRaw(`Save failed — ${result.reason}`, 0xc25450);
+    }
+  }
+
+  private autoSaveAfterDayClose(): void {
+    const result = writeSave(this.gameState);
+    if (result.status === 'ok') {
+      this.toast.showRaw('Auto-saved', 0x6ec27a);
+    } else {
+      this.toast.showRaw(`Auto-save failed — ${result.reason}`, 0xc25450);
+    }
+  }
+
+  private handleSaveReset(): void {
+    const result = clearSave();
+    if (result.status === 'ok') {
+      this.toast.showRaw('Save cleared — refresh to start fresh', 0xe6b84a);
+      this.routeBook.refresh();
+    } else {
+      this.toast.showRaw(`Reset failed — ${result.reason}`, 0xc25450);
+    }
   }
 
   private advanceDay(): DayCloseAdvanceResult {
@@ -559,7 +628,10 @@ export class DistrictScene extends Phaser.Scene {
     const lastJob = this.gameState
       .getJobsForNpc(npc.data.id)
       .find((j) => j.scheduledDay === day);
+    const disruption = account ? this.gameState.getActiveDisruptionForAccount(account.id) : undefined;
     let body: string;
+    let statusLabel: string;
+    let statusColor: number;
     if (account) {
       const planLabel = ACCOUNT_PLAN_LABEL[account.plan];
       const value = formatMonthlyValue(account.monthlyValueCents);
@@ -568,9 +640,21 @@ export class DistrictScene extends Phaser.Scene {
       const band = riskBandFromSatisfaction(account.satisfaction);
       const bandLabel = RISK_BAND_LABEL[band];
       const dueLine = `Next due day ${account.nextDueDay}`;
-      body = `${planLabel} at ${value}. Earned ${earned}. Health: ${account.satisfaction}/100 (${bandLabel}). ${dueLine}. Today: ${todayLine}.`;
+      const baseLine = `${planLabel} at ${value}. Earned ${earned}. Health: ${account.satisfaction}/100 (${bandLabel}). ${dueLine}. Today: ${todayLine}.`;
+      if (disruption) {
+        const remaining = Math.max(0, disruption.deadlineDay - day);
+        body = `${disruption.narrative}\nIronRoot deadline: ${remaining} day${remaining === 1 ? '' : 's'}. Win them back with a solid+ service.\n\n${baseLine}`;
+        statusLabel = 'Contested';
+        statusColor = DISRUPTION_STATUS_COLOR.active;
+      } else {
+        body = baseLine;
+        statusLabel = DEAL_STATUS_LABEL.won;
+        statusColor = lastJob ? JOB_STATUS_COLOR[lastJob.status] : DEAL_STATUS_COLOR.won;
+      }
     } else {
       body = "We're booked. Just keep showing up.";
+      statusLabel = DEAL_STATUS_LABEL.won;
+      statusColor = DEAL_STATUS_COLOR.won;
     }
     this.state = 'INFO_PANEL';
     this.prompt.hide();
@@ -578,8 +662,8 @@ export class DistrictScene extends Phaser.Scene {
       name: npc.data.name,
       role: npc.data.role,
       body,
-      statusLabel: DEAL_STATUS_LABEL.won,
-      statusColor: lastJob ? JOB_STATUS_COLOR[lastJob.status] : DEAL_STATUS_COLOR.won,
+      statusLabel,
+      statusColor,
     });
   }
 
@@ -686,4 +770,14 @@ export class DistrictScene extends Phaser.Scene {
     }
     return best;
   }
+}
+
+function formatRelativeAge(seconds: number): string {
+  if (seconds < 60) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr ago`;
+  const days = Math.round(hours / 24);
+  return `${days} day${days === 1 ? '' : 's'} ago`;
 }

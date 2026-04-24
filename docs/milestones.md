@@ -95,14 +95,44 @@ Delivered:
 
 Explicitly *not* in M5: rival ambient AI / multiple disruption types, save/load, audio.
 
-## M6 - Save/load + final hardening (next)
+## M6 - Save/load + final hardening
 
-Goal: lock the slice down — persist all five state domains across reloads, harden edge cases, and tighten the play loop with the content authored.
+**Status: complete.** This is the final milestone of the vertical slice.
 
-Planned:
+Delivered:
 
-- Save/load (`localStorage`) covering prospects, deals, accounts, jobs, disruptions, and the day clock — `toJSON()` is already in place
-- Manual save slot + auto-save on day close
-- A small audio pass: light SFX cues for milestone moments (encounter open, job done, day close, disruption trigger)
-- Edge-case sweeps: scene-resume on save load, disruption deadlines that span loads, churned accounts on load
-- Optional: a second authored disruption event to prove the registry generalises
+- Versioned save schema (`SaveEnvelope { schemaVersion, appVersion, savedAt, payload }`) backed by `localStorage` under `nrpg:save:v1`
+- `GameState.fromSerialized(payload)` static factory that rebuilds all five domain Maps, derives `jobIdCounter` / `disruptionIdCounter` from existing ids, and applies safe defaults for any missing fields
+- `saveSystem.ts` with `writeSave` / `readSave` / `clearSave` / `hasSavedGame`, returning tagged outcomes (`ok / unsupported / corrupt / incompatible / missing / error`); corrupt or version-incompatible saves are auto-cleared
+- Auto-save on Day Close completion + manual save (`S`) from the Route Book + reset (`Shift+R`) from the Route Book + load-on-start in `DistrictScene.create()`
+- Save status surfaces through the existing `StatusToast` (`Save loaded`, `Game saved`, `Auto-saved`, `Save unreadable — starting fresh`, etc.)
+- Visual state rehydrates correctly after load: prospect badges, job-ready `!` markers, `RIVAL` markers, churned panel routing, day banner
+- Won-account info panel is now contest-aware — when a disruption is active on the account, the panel shows the IronRoot narrative + days remaining alongside the standard health/cadence/today line
+- `ACCOUNT_INITIAL_SATISFACTION` raised to 78 (healthy band) and the content validator now asserts that fresh accounts can't auto-trigger a doorhanger at the next day close
+- Route Book footer shows live save hints (`[S] save`, `[Shift+R] clear save` only when a save exists); empty-state hint is now a four-step new-player onboarding script with NPC location callouts
+- New docs: `docs/bugs.md`, `docs/playtest-notes.md`, `docs/assets.md`, plus a vertical-slice gate review in `docs/milestones.md`
+
+Explicitly *not* in M6: audio (deferred), second authored disruption event (deferred — registry already proven structurally), arbitrary save slots, in-game settings.
+
+## Vertical slice — gate review (M6)
+
+| Pillar                        | Pass | Notes |
+| ----------------------------- | ---- | ----- |
+| Exploration feel              | Pass | 4-direction movement, collision against terrain + NPCs, prompt-on-proximity. Pixel-perfect render is intentional and reads cleanly at 640×360. |
+| Qualification clarity         | Pass | Authored four-NPC dialogue tree with at least one path each to qualified / deferred / disqualified / non-prospect. Resume rules make NPCs remember what was said. |
+| Closing Encounter readability | Pass | Six labelled meters, five named actions with descriptions, per-archetype reactions, threshold objections. Outcomes are predictable from the meter values, and the result panel confirms what just happened. |
+| Account-win payoff            | Pass | Win toast + immediate scheduled job + `!` marker over the customer + Route Book entry with plan and recurring value. The transition from "you got a yes" to "you have work" is one beat. |
+| Service job payoff            | Pass | Hold-`E` to service four zones under a 60-80s timer; projected payout updates live; result panel grades quality (unfinished/rough/solid/pristine) and pays accordingly. Account totals tick up. |
+| Day Close clarity             | Pass | Earnings, per-job result, IronRoot activity, and tomorrow's schedule all render in one panel. Teaser line varies by what happened. |
+| Account health + rival        | Pass | Satisfaction band is visible in Route Book and on the in-world panel. Doorhanger triggers at the right moment, daily drift is visible, expiration churns the account. |
+| Save/load reliability         | Pass | Round-trip restores all five domains + day clock + visual markers. Corrupt/incompatible saves are safely discarded. |
+| Architecture scalability      | Pass | Five explicitly-bounded state domains; pure-logic controllers (no Phaser deps) for dialogue / closing / service / disruption; content/logic/view split holds across all four authoring systems. Adding a second disruption event, second district, or second customer archetype is content-only.
+
+## Backlog beyond the slice
+
+- Audio pass (encounter open, zone cleared, day close, disruption triggered)
+- A second authored disruption event (e.g. "HOA complaint" on consecutive misses)
+- Route Book scrolling/pagination once 5+ accounts coexist
+- Multi-district travel + a per-day energy budget
+- Re-qualification flow for churned accounts
+- Multiple save slots

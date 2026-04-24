@@ -11,6 +11,20 @@ Explore neighborhoods, identify prospects, qualify leads, enter dedicated Closin
 3. **Conversation-as-gameplay.** The "boss fight" is closing a deal. Later milestones build up qualification, trust, objections, and the Closing Encounter mini-game.
 4. **Small loop, visible growth.** Small routes, steady recurring jobs, a rival applying pressure to the same blocks you work. Your Route Book is the progression track.
 
+## Vertical slice acceptance gates (M6)
+
+The slice is feature-complete. The following must all hold for the slice to demo:
+
+- Fresh start: clear localStorage, reload, game starts on Day 1 with no NPCs qualified
+- Full loop on one NPC: qualify → close → first job ready → service → Day Close → next-day cadence respected
+- Cadence honesty: a missed or failed job pushes catch-up to *tomorrow*, never to "in 14 days"
+- Disruption visible: account that drops below `healthy` gets contested at the next Day Close, with a `RIVAL` marker, Route Book `CONTESTED` tag, and an account-panel narrative
+- Disruption resolvable: a `solid` or `pristine` job clears the contest before the deadline
+- Disruption expirable: ignoring the doorhanger past its deadline churns the account; the Route Book shows a "LOST TO IRONROOT" section
+- Save round-trips: manual save (`S` from Route Book) + browser refresh restores prospects, deals, accounts, jobs, disruptions, day, banner, NPC markers, and contested/churned panels
+- Auto-save fires on Day Close completion
+- `npm run build` passes
+
 ## Near-term scope boundary (through M5)
 
 The prospecting-to-payday arc plays end-to-end *and* now has consequences. Service quality drives account health; missed and failed visits drop satisfaction without resetting the recurring cadence; an at-risk account can be contested by IronRoot and lost outright if you ignore it.
@@ -129,6 +143,8 @@ Outcomes:
 - Hold to service a job zone: `E` (while standing in a coloured zone)
 - Open / close Route Book: `Tab`
 - End day: `N`
+- Manual save (in Route Book): `S`
+- Clear save (in Route Book): `Shift + R`
 
 Gamepad and touch are out of scope for now.
 

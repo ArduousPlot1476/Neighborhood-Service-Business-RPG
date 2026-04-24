@@ -16,6 +16,9 @@ export interface InputKeys {
   digits: ReadonlyArray<Phaser.Input.Keyboard.Key>;
   routeBook: Phaser.Input.Keyboard.Key;
   endDay: Phaser.Input.Keyboard.Key;
+  save: Phaser.Input.Keyboard.Key;
+  reset: Phaser.Input.Keyboard.Key;
+  shift: Phaser.Input.Keyboard.Key;
 }
 
 export class PlayerController {
@@ -49,6 +52,9 @@ export class PlayerController {
       ],
       routeBook: tabKey,
       endDay: kb.addKey(K.N),
+      save: kb.addKey(K.S),
+      reset: kb.addKey(K.R),
+      shift: kb.addKey(K.SHIFT),
     };
   }
 
