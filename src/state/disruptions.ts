@@ -21,9 +21,9 @@ export const DISRUPTION_STATUS_LABEL: Readonly<Record<DisruptionStatus, string>>
 };
 
 export const DISRUPTION_STATUS_COLOR: Readonly<Record<DisruptionStatus, number>> = {
-  active: 0xc25450,
-  resolved: 0x6ec27a,
-  expired: 0x6a6a6a,
+  active: 0xa23a1c,
+  resolved: 0x5a8a3a,
+  expired: 0x6e6a64,
 };
 
 export const DISRUPTION_STATUS_HEX: Readonly<Record<DisruptionStatus, string>> = {

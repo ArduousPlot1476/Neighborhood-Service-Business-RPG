@@ -30,10 +30,10 @@ export class RouteBookOverlay {
     const x = GAME_WIDTH / 2;
     const y = GAME_HEIGHT / 2;
 
-    const dim = scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
-    const border = scene.add.rectangle(x, y, w, h, 0xd9c78a, 1);
-    const bg = scene.add.rectangle(x, y, w - 2, h - 2, 0x0f1a14, 0.97);
-    bg.setStrokeStyle(1, 0x2a3a2a);
+    const dim = scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.45);
+    const border = scene.add.rectangle(x, y, w, h, 0xa48748, 1);
+    const bg = scene.add.rectangle(x, y, w - 2, h - 2, 0xf4e9d0, 0.98);
+    bg.setStrokeStyle(1, 0xc8b27e);
 
     const left = x - w / 2 + 14;
     const top = y - h / 2 + 12;
@@ -41,13 +41,13 @@ export class RouteBookOverlay {
     this.headerText = scene.add.text(left, top, 'Route Book', {
       fontFamily: 'monospace',
       fontSize: '13px',
-      color: '#f4e7b4',
+      color: '#1a1410',
     });
     this.summaryText = scene.add
       .text(x + w / 2 - 14, top + 1, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
         align: 'right',
       })
       .setOrigin(1, 0);
@@ -55,7 +55,7 @@ export class RouteBookOverlay {
     this.disruptionText = scene.add.text(left, top + 22, '', {
       fontFamily: 'monospace',
       fontSize: '10px',
-      color: '#e08a85',
+      color: '#a23a1c',
       wordWrap: { width: w - 28 },
     });
     this.disruptionText.setLineSpacing(2);
@@ -63,20 +63,20 @@ export class RouteBookOverlay {
     this.bodyText = scene.add.text(left, top + 50, '', {
       fontFamily: 'monospace',
       fontSize: '10px',
-      color: '#cfe9c3',
+      color: '#3a2e24',
     });
     this.bodyText.setLineSpacing(3);
 
     this.emptyText = scene.add.text(left, top + 50, '', {
       fontFamily: 'monospace',
       fontSize: '10px',
-      color: '#8ab07a',
+      color: '#7a624a',
     });
 
     this.footerText = scene.add.text(left, y + h / 2 - 22, '', {
       fontFamily: 'monospace',
       fontSize: '9px',
-      color: '#8ab07a',
+      color: '#7a624a',
     });
 
     this.container = scene.add.container(0, 0, [

@@ -26,16 +26,16 @@ export class StatusToast {
     const x = GAME_WIDTH / 2;
     const y = 26;
 
-    this.border = scene.add.rectangle(x, y, w, h, 0xd9c78a, 1);
-    this.bg = scene.add.rectangle(x, y, w - 2, h - 2, 0x0f1a14, 0.95);
-    this.bg.setStrokeStyle(1, 0x2a3a2a);
-    this.swatch = scene.add.rectangle(x - w / 2 + 10, y, 6, 6, 0x8a8575, 1);
-    this.swatch.setStrokeStyle(1, 0x0f1a14);
+    this.border = scene.add.rectangle(x, y, w, h, 0xa48748, 1);
+    this.bg = scene.add.rectangle(x, y, w - 2, h - 2, 0xf4e9d0, 0.97);
+    this.bg.setStrokeStyle(1, 0xc8b27e);
+    this.swatch = scene.add.rectangle(x - w / 2 + 10, y, 6, 6, 0x6e6a64, 1);
+    this.swatch.setStrokeStyle(1, 0x1a1410);
     this.text = scene.add
       .text(x - w / 2 + 22, y, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#f4e7b4',
+        color: '#1a1410',
       })
       .setOrigin(0, 0.5);
 

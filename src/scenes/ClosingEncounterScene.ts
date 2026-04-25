@@ -68,7 +68,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
   }
 
   create(): void {
-    const bg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x0b1410, 0.96);
+    const bg = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0xecdcb1, 0.97);
     bg.setScrollFactor(0);
     bg.setDepth(0);
 
@@ -106,20 +106,20 @@ export class ClosingEncounterScene extends Phaser.Scene {
   private buildHeader(): void {
     const top = 16;
     this.headerName = this.add
-      .text(16, top, '', { fontFamily: 'monospace', fontSize: '12px', color: '#f4e7b4' })
+      .text(16, top, '', { fontFamily: 'monospace', fontSize: '12px', color: '#1a1410' })
       .setScrollFactor(0)
       .setDepth(10);
     this.headerArchetype = this.add
-      .text(16, top + 14, '', { fontFamily: 'monospace', fontSize: '10px', color: '#cfe9c3' })
+      .text(16, top + 14, '', { fontFamily: 'monospace', fontSize: '10px', color: '#3a2e24' })
       .setScrollFactor(0)
       .setDepth(10);
     this.headerTagline = this.add
-      .text(16, top + 26, '', { fontFamily: 'monospace', fontSize: '9px', color: '#8ab07a' })
+      .text(16, top + 26, '', { fontFamily: 'monospace', fontSize: '9px', color: '#7a624a' })
       .setScrollFactor(0)
       .setDepth(10);
 
     this.turnLabel = this.add
-      .text(GAME_WIDTH - 16, top, '', { fontFamily: 'monospace', fontSize: '10px', color: '#d9c78a' })
+      .text(GAME_WIDTH - 16, top, '', { fontFamily: 'monospace', fontSize: '10px', color: '#a48748' })
       .setOrigin(1, 0)
       .setScrollFactor(0)
       .setDepth(10);
@@ -127,7 +127,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
       .text(GAME_WIDTH - 16, top + 14, 'Choose 1-5    Esc walks away', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setOrigin(1, 0)
       .setScrollFactor(0)
@@ -144,16 +144,16 @@ export class ClosingEncounterScene extends Phaser.Scene {
         .text(startX, y, METER_LABEL[meter], {
           fontFamily: 'monospace',
           fontSize: '9px',
-          color: '#cfe9c3',
+          color: '#3a2e24',
         })
         .setScrollFactor(0)
         .setDepth(10);
       this.meterLabels.set(meter, label);
 
       const trackX = startX + labelWidth;
-      const track = this.add.rectangle(trackX, y + 4, METER_BAR_WIDTH, 6, 0x1f2a22, 1);
+      const track = this.add.rectangle(trackX, y + 4, METER_BAR_WIDTH, 6, 0xecdcb1, 1);
       track.setOrigin(0, 0);
-      track.setStrokeStyle(1, 0x2a3a2a);
+      track.setStrokeStyle(1, 0xa48748);
       track.setScrollFactor(0);
       track.setDepth(10);
 
@@ -167,7 +167,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
         .text(trackX + METER_BAR_WIDTH + 6, y, '', {
           fontFamily: 'monospace',
           fontSize: '9px',
-          color: '#d9c78a',
+          color: '#1a1410',
         })
         .setScrollFactor(0)
         .setDepth(10);
@@ -180,9 +180,9 @@ export class ClosingEncounterScene extends Phaser.Scene {
     const y = 64;
     const w = GAME_WIDTH - x - 16;
     const h = METERS_ORDER.length * METER_ROW_HEIGHT;
-    const border = this.add.rectangle(x, y, w, h, 0xd9c78a, 1).setOrigin(0, 0);
-    const bg = this.add.rectangle(x + 1, y + 1, w - 2, h - 2, 0x101a14, 0.95).setOrigin(0, 0);
-    bg.setStrokeStyle(1, 0x2a3a2a);
+    const border = this.add.rectangle(x, y, w, h, 0xa48748, 1).setOrigin(0, 0);
+    const bg = this.add.rectangle(x + 1, y + 1, w - 2, h - 2, 0xecdcb1, 0.96).setOrigin(0, 0);
+    bg.setStrokeStyle(1, 0xc8b27e);
     border.setScrollFactor(0).setDepth(10);
     bg.setScrollFactor(0).setDepth(10);
 
@@ -190,7 +190,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
       .text(x + 10, y + 10, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#f4e7b4',
+        color: '#1a1410',
         wordWrap: { width: w - 20 },
       })
       .setScrollFactor(0)
@@ -205,9 +205,9 @@ export class ClosingEncounterScene extends Phaser.Scene {
     const w = right - left;
     const h = GAME_HEIGHT - top - 12;
 
-    const border = this.add.rectangle(left, top, w, h, 0xd9c78a, 1).setOrigin(0, 0);
-    const bg = this.add.rectangle(left + 1, top + 1, w - 2, h - 2, 0x0f1a14, 0.97).setOrigin(0, 0);
-    bg.setStrokeStyle(1, 0x2a3a2a);
+    const border = this.add.rectangle(left, top, w, h, 0xa48748, 1).setOrigin(0, 0);
+    const bg = this.add.rectangle(left + 1, top + 1, w - 2, h - 2, 0xf4e9d0, 0.99).setOrigin(0, 0);
+    bg.setStrokeStyle(1, 0xc8b27e);
     border.setScrollFactor(0).setDepth(10);
     bg.setScrollFactor(0).setDepth(10);
 
@@ -215,7 +215,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
       .text(left + 10, top + 8, 'Negotiation actions', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setScrollFactor(0)
       .setDepth(11);
@@ -228,7 +228,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
         .text(left + 10, rowTop + i * rowHeight, '', {
           fontFamily: 'monospace',
           fontSize: '11px',
-          color: '#f4e7b4',
+          color: '#1a1410',
         })
         .setScrollFactor(0)
         .setDepth(11);
@@ -236,7 +236,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
         .text(left + 10, rowTop + i * rowHeight + 12, '', {
           fontFamily: 'monospace',
           fontSize: '9px',
-          color: '#cfe9c3',
+          color: '#3a2e24',
           wordWrap: { width: w - 24 },
         })
         .setScrollFactor(0)
@@ -252,23 +252,23 @@ export class ClosingEncounterScene extends Phaser.Scene {
     const h = 160;
     const x = GAME_WIDTH / 2;
     const y = GAME_HEIGHT / 2;
-    const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
-    const border = this.add.rectangle(x, y, w, h, 0xd9c78a, 1);
-    const bg = this.add.rectangle(x, y, w - 2, h - 2, 0x0f1a14, 0.98);
-    bg.setStrokeStyle(1, 0x2a3a2a);
+    const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.5);
+    const border = this.add.rectangle(x, y, w, h, 0xa48748, 1);
+    const bg = this.add.rectangle(x, y, w - 2, h - 2, 0xf4e9d0, 0.99);
+    bg.setStrokeStyle(1, 0xc8b27e);
 
     this.resultTitle = this.add
       .text(x, y - h / 2 + 14, '', {
         fontFamily: 'monospace',
         fontSize: '14px',
-        color: '#f4e7b4',
+        color: '#1a1410',
       })
       .setOrigin(0.5, 0);
     this.resultBody = this.add
       .text(x, y - 6, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
         align: 'center',
         wordWrap: { width: w - 28 },
       })
@@ -278,7 +278,7 @@ export class ClosingEncounterScene extends Phaser.Scene {
       .text(x, y + h / 2 - 16, '[E / Space] return to district', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setOrigin(0.5, 0);
 
@@ -377,11 +377,11 @@ export class ClosingEncounterScene extends Phaser.Scene {
   private outcomeColor(outcome: EncounterResult['outcome']): string {
     switch (outcome) {
       case 'win':
-        return '#7fd49b';
+        return '#3d6b2c';
       case 'lose':
-        return '#e08a85';
+        return '#a23a1c';
       case 'defer':
-        return '#f0c878';
+        return '#a48748';
     }
   }
 

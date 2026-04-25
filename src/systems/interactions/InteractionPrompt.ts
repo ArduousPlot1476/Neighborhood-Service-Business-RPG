@@ -7,13 +7,13 @@ export class InteractionPrompt {
   private targetId: string | null = null;
 
   constructor(scene: Phaser.Scene) {
-    this.bg = scene.add.rectangle(0, 0, 56, 14, 0x101a14, 0.92);
-    this.bg.setStrokeStyle(1, 0xd9c78a);
+    this.bg = scene.add.rectangle(0, 0, 56, 14, 0xf4e9d0, 0.95);
+    this.bg.setStrokeStyle(1, 0xa48748);
     this.label = scene.add
       .text(0, -1, '[E] Talk', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#f4e7b4',
+        color: '#1a1410',
       })
       .setOrigin(0.5);
 

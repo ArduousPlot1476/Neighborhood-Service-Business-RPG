@@ -63,16 +63,16 @@ export class DayCloseScene extends Phaser.Scene {
     const totalRecurring = activeAccounts.reduce((s, a) => s + a.monthlyValueCents, 0);
     const totalLifetime = accounts.reduce((s, a) => s + a.totalEarnedCents, 0);
 
-    const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.7);
+    const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
     dim.setDepth(0);
 
     const w = GAME_WIDTH - 60;
     const h = GAME_HEIGHT - 28;
     const x = GAME_WIDTH / 2;
     const y = GAME_HEIGHT / 2;
-    const border = this.add.rectangle(x, y, w, h, 0xd9c78a, 1);
-    const bg = this.add.rectangle(x, y, w - 2, h - 2, 0x0f1a14, 0.98);
-    bg.setStrokeStyle(1, 0x2a3a2a);
+    const border = this.add.rectangle(x, y, w, h, 0xa48748, 1);
+    const bg = this.add.rectangle(x, y, w - 2, h - 2, 0xf4e9d0, 0.99);
+    bg.setStrokeStyle(1, 0xc8b27e);
     border.setDepth(1);
     bg.setDepth(1);
 
@@ -83,7 +83,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(left, top, `Day ${summary.previousDay} — closed`, {
         fontFamily: 'monospace',
         fontSize: '14px',
-        color: '#f4e7b4',
+        color: '#1a1410',
       })
       .setDepth(2);
 
@@ -91,7 +91,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(x + w / 2 - 18, top + 2, this.cohortLine(activeAccounts.length, totalRecurring, totalLifetime), {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
         align: 'right',
       })
       .setOrigin(1, 0)
@@ -103,7 +103,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(left, cursorY, `Earned today: ${formatDollars(earnedToday)}`, {
         fontFamily: 'monospace',
         fontSize: '12px',
-        color: earnedToday > 0 ? '#9fd96a' : '#cfe9c3',
+        color: earnedToday > 0 ? '#3d6b2c' : '#1a1410',
       })
       .setDepth(2);
     cursorY += 16;
@@ -112,7 +112,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(left, cursorY, this.tallyLine(completed.length, failed.length, missed.length), {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
       })
       .setDepth(2);
     cursorY += 18;
@@ -121,7 +121,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(left, cursorY, "Today's work:", {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setDepth(2);
     cursorY += 12;
@@ -133,7 +133,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(left, cursorY, detailLines.join('\n'), {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
         lineSpacing: 3,
       })
       .setDepth(2);
@@ -149,7 +149,7 @@ export class DayCloseScene extends Phaser.Scene {
         .text(left, cursorY, 'IronRoot activity:', {
           fontFamily: 'monospace',
           fontSize: '10px',
-          color: '#e08a85',
+          color: '#a23a1c',
         })
         .setDepth(2);
       cursorY += 12;
@@ -170,7 +170,7 @@ export class DayCloseScene extends Phaser.Scene {
         .text(left, cursorY, lines.join('\n'), {
           fontFamily: 'monospace',
           fontSize: '10px',
-          color: '#cfe9c3',
+          color: '#3a2e24',
           lineSpacing: 3,
         })
         .setDepth(2);
@@ -182,7 +182,7 @@ export class DayCloseScene extends Phaser.Scene {
         .text(left, cursorY, `Tomorrow on the route: ${summary.nextJobs.length} job${summary.nextJobs.length === 1 ? '' : 's'} scheduled.`, {
           fontFamily: 'monospace',
           fontSize: '10px',
-          color: '#f0c878',
+          color: '#a48748',
         })
         .setDepth(2);
       cursorY += 14;
@@ -193,7 +193,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(left, y + h / 2 - 38, teaser, {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#f0c878',
+        color: '#a48748',
         wordWrap: { width: w - 32 },
       })
       .setDepth(2);
@@ -202,7 +202,7 @@ export class DayCloseScene extends Phaser.Scene {
       .text(x, y + h / 2 - 18, '[E / Space] start tomorrow', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setOrigin(0.5, 0)
       .setDepth(2);

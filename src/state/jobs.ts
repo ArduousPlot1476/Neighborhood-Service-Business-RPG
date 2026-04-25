@@ -57,11 +57,11 @@ export const JOB_STATUS_LABEL: Readonly<Record<JobStatus, string>> = {
 };
 
 export const JOB_STATUS_COLOR: Readonly<Record<JobStatus, number>> = {
-  scheduled: 0xe6b84a,
+  scheduled: 0xd4a019,
   in_progress: 0x6aa8d9,
-  completed: 0x6ec27a,
-  missed: 0xc25450,
-  failed: 0xc25450,
+  completed: 0x5a8a3a,
+  missed: 0xa23a1c,
+  failed: 0xa23a1c,
 };
 
 export const JOB_QUALITY_LABEL: Readonly<Record<JobQuality, string>> = {

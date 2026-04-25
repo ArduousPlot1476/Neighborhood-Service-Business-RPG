@@ -33,9 +33,9 @@ export class InteractionPanel {
     const x = GAME_WIDTH / 2;
     const y = GAME_HEIGHT - PANEL_PAD_BOTTOM - h / 2;
 
-    const border = scene.add.rectangle(x, y, w, h, 0xd9c78a, 1);
-    const bg = scene.add.rectangle(x, y, w - 2, h - 2, 0x0f1a14, 0.97);
-    bg.setStrokeStyle(1, 0x2a3a2a);
+    const border = scene.add.rectangle(x, y, w, h, 0xa48748, 1);
+    const bg = scene.add.rectangle(x, y, w - 2, h - 2, 0xf4e9d0, 0.98);
+    bg.setStrokeStyle(1, 0xc8b27e);
 
     const leftPad = x - w / 2 + TEXT_LEFT_PAD;
     const topPad = y - h / 2 + TEXT_TOP_PAD;
@@ -43,29 +43,29 @@ export class InteractionPanel {
     this.nameText = scene.add.text(leftPad, topPad, '', {
       fontFamily: 'monospace',
       fontSize: '11px',
-      color: '#f4e7b4',
+      color: '#1a1410',
     });
     this.roleText = scene.add.text(leftPad, topPad + 13, '', {
       fontFamily: 'monospace',
       fontSize: '9px',
-      color: '#8ab07a',
+      color: '#7a624a',
     });
 
-    this.statusBadge = scene.add.rectangle(x + w / 2 - 10, topPad + 6, 8, 8, 0x8a8575, 1);
-    this.statusBadge.setStrokeStyle(1, 0x0f1a14);
+    this.statusBadge = scene.add.rectangle(x + w / 2 - 10, topPad + 6, 8, 8, 0x6e6a64, 1);
+    this.statusBadge.setStrokeStyle(1, 0x1a1410);
     this.statusBadge.setOrigin(1, 0.5);
     this.statusLabel = scene.add
       .text(x + w / 2 - 22, topPad + 2, '', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
       })
       .setOrigin(1, 0);
 
     this.bodyText = scene.add.text(leftPad, topPad + 28, '', {
       fontFamily: 'monospace',
       fontSize: '10px',
-      color: '#cfe9c3',
+      color: '#3a2e24',
       wordWrap: { width: w - 24 },
     });
     this.bodyText.setLineSpacing(2);
@@ -76,7 +76,7 @@ export class InteractionPanel {
       const t = scene.add.text(leftPad, optionsTop + i * OPTION_LINE_HEIGHT, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#f4e7b4',
+        color: '#1a1410',
         wordWrap: { width: w - 24 },
       });
       this.optionTexts.push(t);
@@ -86,7 +86,7 @@ export class InteractionPanel {
       .text(x + w / 2 - 12, y + h / 2 - 14, '', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setOrigin(1, 0);
 

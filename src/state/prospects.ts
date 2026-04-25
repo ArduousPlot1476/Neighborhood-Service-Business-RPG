@@ -34,8 +34,8 @@ export const PROSPECT_STATUS_LABEL: Readonly<Record<ProspectStatus, string>> = {
 };
 
 export const PROSPECT_STATUS_COLOR: Readonly<Record<ProspectStatus, number>> = {
-  unknown: 0x8a8575,
-  disqualified: 0xc25450,
-  deferred: 0xe6b84a,
-  qualified: 0x6ec27a,
+  unknown: 0x6e6a64,
+  disqualified: 0xa23a1c,
+  deferred: 0xd4a019,
+  qualified: 0x5a8a3a,
 };

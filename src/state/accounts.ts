@@ -103,15 +103,15 @@ export const RISK_BAND_LABEL: Readonly<Record<AccountRiskBand, string>> = {
 };
 
 export const RISK_BAND_COLOR: Readonly<Record<AccountRiskBand, number>> = {
-  healthy: 0x6ec27a,
-  watch: 0xe6b84a,
-  at_risk: 0xe69240,
-  threatened: 0xc25450,
+  healthy: 0x5a8a3a,
+  watch: 0xd4a019,
+  at_risk: 0xc8741a,
+  threatened: 0xa23a1c,
 };
 
 export const RISK_BAND_HEX: Readonly<Record<AccountRiskBand, string>> = {
-  healthy: '#7fd49b',
-  watch: '#f0c878',
-  at_risk: '#e6a060',
-  threatened: '#e08a85',
+  healthy: '#5a8a3a',
+  watch: '#d4a019',
+  at_risk: '#c8741a',
+  threatened: '#a23a1c',
 };

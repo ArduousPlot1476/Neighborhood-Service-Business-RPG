@@ -34,9 +34,9 @@ export const DEAL_STATUS_LABEL: Readonly<Record<DealStatus, string>> = {
 };
 
 export const DEAL_STATUS_COLOR: Readonly<Record<DealStatus, number>> = {
-  none: 0x8a8575,
+  none: 0x6e6a64,
   in_progress: 0x6aa8d9,
-  won: 0x6ec27a,
-  lost: 0xc25450,
-  deferred: 0xe6b84a,
+  won: 0x5a8a3a,
+  lost: 0xa23a1c,
+  deferred: 0xd4a019,
 };

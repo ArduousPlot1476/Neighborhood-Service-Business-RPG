@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { TILE_SIZE } from '../game/config';
-import { PERSON_KEY } from '../scenes/PreloadScene';
+import { characterTextureKey } from '../content/art/sunlitCharacters';
 import { PROSPECT_STATUS_COLOR, type ProspectStatus } from '../state/prospects';
 import type { NpcData } from '../types';
 
@@ -21,27 +21,29 @@ export class Npc {
     const worldX = data.tileX * TILE_SIZE + TILE_SIZE / 2;
     const worldY = data.tileY * TILE_SIZE + TILE_SIZE / 2;
 
-    this.sprite = scene.physics.add.sprite(worldX, worldY, PERSON_KEY);
-    this.sprite.setTint(data.tint);
+    const textureKey = characterTextureKey(data.id);
+    const fallbackKey = scene.textures.exists(textureKey) ? textureKey : characterTextureKey('player');
+
+    this.sprite = scene.physics.add.sprite(worldX, worldY, fallbackKey);
     this.sprite.setDepth(9);
     this.sprite.setData('npcId', data.id);
 
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
     body.setSize(8, 4);
-    body.setOffset(2, 11);
+    body.setOffset(4, 20);
     body.setImmovable(true);
 
-    this.badge = scene.add.rectangle(worldX, worldY - 11, 4, 4, PROSPECT_STATUS_COLOR.unknown, 1);
-    this.badge.setStrokeStyle(1, 0x0f1a14);
+    this.badge = scene.add.rectangle(worldX, worldY - 16, 4, 4, PROSPECT_STATUS_COLOR.unknown, 1);
+    this.badge.setStrokeStyle(1, 0x1a1410);
     this.badge.setDepth(11);
     this.badge.setVisible(false);
 
     this.jobMarker = scene.add
-      .text(worldX, worldY - 18, '!', {
+      .text(worldX, worldY - 22, '!', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#f0c878',
-        stroke: '#0f1a14',
+        color: '#f0c43a',
+        stroke: '#1a1410',
         strokeThickness: 2,
       })
       .setOrigin(0.5, 1)
@@ -49,11 +51,11 @@ export class Npc {
     this.jobMarker.setVisible(false);
 
     this.contestedMarker = scene.add
-      .text(worldX, worldY - 26, 'RIVAL', {
+      .text(worldX, worldY - 30, 'RIVAL', {
         fontFamily: 'monospace',
         fontSize: '8px',
-        color: '#e08a85',
-        stroke: '#0f1a14',
+        color: '#a23a1c',
+        stroke: '#f4e9d0',
         strokeThickness: 2,
       })
       .setOrigin(0.5, 1)

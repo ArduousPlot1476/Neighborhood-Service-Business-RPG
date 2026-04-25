@@ -148,7 +148,7 @@ export class DistrictScene extends Phaser.Scene {
     cam.startFollow(this.player.sprite, true, 0.18, 0.18);
     cam.setBounds(0, 0, worldWidth, worldHeight);
     cam.setRoundPixels(true);
-    cam.setBackgroundColor(0x0f1a14);
+    cam.setBackgroundColor(0x1a1410);
 
     this.controller = new PlayerController(PLAYER_SPEED);
     this.keys = PlayerController.createKeys(this);
@@ -215,7 +215,9 @@ export class DistrictScene extends Phaser.Scene {
       .text(4, 4, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#d9c78a',
+        color: '#f4e9d0',
+        stroke: '#1a1410',
+        strokeThickness: 2,
       })
       .setScrollFactor(0)
       .setDepth(80);
@@ -224,21 +226,25 @@ export class DistrictScene extends Phaser.Scene {
       .text(4, 16, 'Move WASD/Arrows  |  Talk E  |  Choose 1-4  |  Leave Esc', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#8ab07a',
+        color: '#ecdcb1',
+        stroke: '#1a1410',
+        strokeThickness: 2,
       })
       .setScrollFactor(0)
       .setDepth(80)
-      .setAlpha(0.8);
+      .setAlpha(0.95);
 
     this.add
       .text(4, 28, '[Tab] Route Book  |  [N] End Day', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#8ab07a',
+        color: '#ecdcb1',
+        stroke: '#1a1410',
+        strokeThickness: 2,
       })
       .setScrollFactor(0)
       .setDepth(80)
-      .setAlpha(0.8);
+      .setAlpha(0.95);
 
     this.refreshDayBanner();
     this.refreshJobMarkers();

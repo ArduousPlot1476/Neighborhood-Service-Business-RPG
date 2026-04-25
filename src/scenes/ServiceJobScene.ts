@@ -80,7 +80,7 @@ export class ServiceJobScene extends Phaser.Scene {
   }
 
   create(): void {
-    this.cameras.main.setBackgroundColor(0x0b1410);
+    this.cameras.main.setBackgroundColor(0xecdcb1);
 
     this.buildHud();
     this.buildYard();
@@ -123,17 +123,17 @@ export class ServiceJobScene extends Phaser.Scene {
 
   private buildHud(): void {
     this.titleText = this.add
-      .text(16, 6, '', { fontFamily: 'monospace', fontSize: '11px', color: '#f4e7b4' })
+      .text(16, 6, '', { fontFamily: 'monospace', fontSize: '11px', color: '#1a1410' })
       .setDepth(10);
     this.serviceLabelText = this.add
-      .text(16, 19, '', { fontFamily: 'monospace', fontSize: '9px', color: '#8ab07a' })
+      .text(16, 19, '', { fontFamily: 'monospace', fontSize: '9px', color: '#7a624a' })
       .setDepth(10);
 
     this.zonesText = this.add
       .text(GAME_WIDTH - 16, 6, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
       })
       .setOrigin(1, 0)
       .setDepth(10);
@@ -141,7 +141,7 @@ export class ServiceJobScene extends Phaser.Scene {
       .text(GAME_WIDTH - 16, 19, '', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#d9c78a',
+        color: '#a48748',
       })
       .setOrigin(1, 0)
       .setDepth(10);
@@ -149,14 +149,14 @@ export class ServiceJobScene extends Phaser.Scene {
     this.timerBarMaxWidth = 220;
     const timerX = GAME_WIDTH / 2 - this.timerBarMaxWidth / 2;
     const timerY = 26;
-    const trackBg = this.add.rectangle(timerX, timerY, this.timerBarMaxWidth, 6, 0x1f2a22, 1);
-    trackBg.setOrigin(0, 0).setStrokeStyle(1, 0x2a3a2a).setDepth(10);
+    const trackBg = this.add.rectangle(timerX, timerY, this.timerBarMaxWidth, 6, 0xc8b27e, 1);
+    trackBg.setOrigin(0, 0).setStrokeStyle(1, 0xa48748).setDepth(10);
     this.timerBarFill = this.add.rectangle(
       timerX,
       timerY,
       this.timerBarMaxWidth,
       6,
-      0xe6b84a,
+      0xd4a019,
       1,
     );
     this.timerBarFill.setOrigin(0, 0).setDepth(11);
@@ -164,7 +164,7 @@ export class ServiceJobScene extends Phaser.Scene {
       .text(GAME_WIDTH / 2, 14, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#d9c78a',
+        color: '#1a1410',
       })
       .setOrigin(0.5, 0)
       .setDepth(10);
@@ -173,7 +173,7 @@ export class ServiceJobScene extends Phaser.Scene {
       .text(GAME_WIDTH / 2, GAME_HEIGHT - 26, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
       })
       .setOrigin(0.5, 0)
       .setDepth(10);
@@ -181,7 +181,7 @@ export class ServiceJobScene extends Phaser.Scene {
       .text(GAME_WIDTH / 2, GAME_HEIGHT - 14, 'WASD move    Hold E to service    Esc finish early', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setOrigin(0.5, 0)
       .setDepth(10);
@@ -199,11 +199,11 @@ export class ServiceJobScene extends Phaser.Scene {
       originY,
       this.yardWidthPx,
       this.yardHeightPx,
-      0x446b2a,
+      0x5a8a3a,
       1,
     );
     grass.setOrigin(0, 0).setDepth(0);
-    grass.setStrokeStyle(1, 0x2f5120);
+    grass.setStrokeStyle(1, 0x3d6b2c);
 
     for (const zone of layout.zones) {
       const zx = this.yardOriginX + zone.tileX * TILE_SIZE;
@@ -212,20 +212,20 @@ export class ServiceJobScene extends Phaser.Scene {
       const zh = zone.heightTiles * TILE_SIZE;
       const sprite = this.add.rectangle(zx, zy, zw, zh, ZONE_BASE_COLOR[zone.kind], 0.85);
       sprite.setOrigin(0, 0).setDepth(1);
-      sprite.setStrokeStyle(1, 0x0f1a14);
+      sprite.setStrokeStyle(1, 0x1a1410);
       this.zoneSprites.set(zone.id, sprite);
 
       const label = this.add
         .text(zx + zw / 2, zy + zh / 2, zone.label, {
           fontFamily: 'monospace',
           fontSize: '9px',
-          color: '#0f1a14',
+          color: '#1a1410',
         })
         .setOrigin(0.5, 0.5)
         .setDepth(2);
       this.zoneLabels.set(zone.id, label);
 
-      const progressBar = this.add.rectangle(zx + 2, zy + zh - 4, zw - 4, 2, 0xf4e7b4, 1);
+      const progressBar = this.add.rectangle(zx + 2, zy + zh - 4, zw - 4, 2, 0xf0c43a, 1);
       progressBar.setOrigin(0, 0).setDepth(2);
       progressBar.setVisible(false);
       this.zoneProgressBars.set(zone.id, progressBar);
@@ -244,23 +244,23 @@ export class ServiceJobScene extends Phaser.Scene {
     const h = 160;
     const x = GAME_WIDTH / 2;
     const y = GAME_HEIGHT / 2;
-    const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.55);
-    const border = this.add.rectangle(x, y, w, h, 0xd9c78a, 1);
-    const bg = this.add.rectangle(x, y, w - 2, h - 2, 0x0f1a14, 0.98);
-    bg.setStrokeStyle(1, 0x2a3a2a);
+    const dim = this.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, 0x000000, 0.5);
+    const border = this.add.rectangle(x, y, w, h, 0xa48748, 1);
+    const bg = this.add.rectangle(x, y, w - 2, h - 2, 0xf4e9d0, 0.99);
+    bg.setStrokeStyle(1, 0xc8b27e);
 
     this.resultTitle = this.add
       .text(x, y - h / 2 + 14, '', {
         fontFamily: 'monospace',
         fontSize: '14px',
-        color: '#f4e7b4',
+        color: '#1a1410',
       })
       .setOrigin(0.5, 0);
     this.resultBody = this.add
       .text(x, y - 8, '', {
         fontFamily: 'monospace',
         fontSize: '10px',
-        color: '#cfe9c3',
+        color: '#3a2e24',
         align: 'center',
         wordWrap: { width: w - 28 },
       })
@@ -270,7 +270,7 @@ export class ServiceJobScene extends Phaser.Scene {
       .text(x, y + h / 2 - 16, '[E / Space] return to district', {
         fontFamily: 'monospace',
         fontSize: '9px',
-        color: '#8ab07a',
+        color: '#7a624a',
       })
       .setOrigin(0.5, 0);
 
@@ -394,7 +394,7 @@ export class ServiceJobScene extends Phaser.Scene {
     const result = this.controller.result();
     if (!result) return;
     const headline = result.outcome === 'completed' ? 'Job complete' : 'Did not finish';
-    this.resultTitle.setColor(result.outcome === 'completed' ? '#7fd49b' : '#e08a85');
+    this.resultTitle.setColor(result.outcome === 'completed' ? '#3d6b2c' : '#a23a1c');
     this.resultTitle.setText(headline);
     const lines: string[] = [
       `Quality: ${JOB_QUALITY_LABEL[result.qualityLabel]} (${Math.round(result.qualityScore * 100)}%)`,
